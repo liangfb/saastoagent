@@ -1,0 +1,6 @@
+aws_region         = "us-west-2"
+vpc_id             = "vpc-XXXXXXXXXXXXXXXXX"
+private_subnet_ids = ["subnet-XXXXXXXXXXXXXXXXX", "subnet-XXXXXXXXXXXXXXXXX"]
+public_subnet_ids  = ["subnet-XXXXXXXXXXXXXXXXX", "subnet-XXXXXXXXXXXXXXXXX"]
+project_name       = "agentic-mesh"
+environment        = "dev"

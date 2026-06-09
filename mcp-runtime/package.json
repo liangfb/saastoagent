@@ -1,0 +1,31 @@
+{
+  "name": "mcp-runtime",
+  "version": "0.1.0",
+  "description": "Generic MCP Server runtime container for Agentic Service Mesh",
+  "private": true,
+  "license": "Apache-2.0",
+  "type": "module",
+  "main": "dist/main.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/main.js",
+    "dev": "tsx watch src/main.ts",
+    "test": "node --test --import tsx/esm test/**/*.test.ts"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.18.0",
+    "fastify": "^5.0.0",
+    "pino": "^9.6.0",
+    "prom-client": "^15.1.0",
+    "undici": "^7.1.0",
+    "zod": "^3.24.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

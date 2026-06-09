@@ -1,0 +1,32 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: backend-mcp-manager
+  namespace: agentic-mesh
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: backend-mcp-manager
+  namespace: agentic-mesh
+rules:
+  - apiGroups: [""]
+    resources: ["configmaps", "secrets", "services", "pods", "pods/log"]
+    verbs: ["get", "list", "create", "update", "patch", "delete", "watch"]
+  - apiGroups: ["apps"]
+    resources: ["deployments", "deployments/scale"]
+    verbs: ["get", "list", "create", "update", "patch", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: backend-mcp-manager
+  namespace: agentic-mesh
+subjects:
+  - kind: ServiceAccount
+    name: backend-mcp-manager
+    namespace: agentic-mesh
+roleRef:
+  kind: Role
+  name: backend-mcp-manager
+  apiGroup: rbac.authorization.k8s.io

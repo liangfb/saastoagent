@@ -1,0 +1,73 @@
+# ---- OS / Editor ----
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
+*.swp
+*.swo
+.claude/settings.local.json
+
+# ---- Node / TypeScript ----
+node_modules/
+dist/
+dist-ssr/
+build/
+*.tsbuildinfo
+.eslintcache
+
+# ---- Logs ----
+# Anchored to repo root so it only ignores a runtime ./logs/ output dir —
+# NOT source dirs like frontend/src/pages/logs/.
+/logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# ---- Env / Secrets ----
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+# In-use K8s manifests hold environment-specific / sensitive values — never
+# commit them. Only the sanitized *.yaml.example templates are tracked (they
+# don't match *.yaml, so no exception rule is needed).
+infra/k8s/*.yaml
+
+# ---- Python ----
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+
+# ---- Terraform ----
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+!*.tfvars.example
+.terraform.lock.hcl
+tfplan
+*.tfplan
+
+# ---- Misc ----
+.playwright-mcp/
+coverage/
+tmp/
+*.local
+# Local-only infra (e.g. docker-compose for local dev); not part of the release.
+infra/local/
+
+# -----dev-----
+BA/
+Design/
+Requirements/
+docs/
+# Backup of pre-cleanup git history (local only)
+.git.bak/

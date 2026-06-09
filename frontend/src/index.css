@@ -1,0 +1,192 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+@import "@fontsource-variable/geist";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  /* All color tokens reference :root / .dark CSS variables so theme switching
+     works. Hard-coded oklch values here would lock the app into light mode. */
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --radius-sm: 0.25rem;
+  --radius-md: 0.375rem;
+  --radius-lg: 0.5rem;
+  --radius-xl: 0.75rem;
+  --font-heading: var(--font-sans);
+  --font-sans: 'Geist Variable', sans-serif;
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
+}
+
+body {
+  margin: 0;
+  font-family: system-ui, -apple-system, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ============================================================
+   Tech palette — electric indigo + ink navy (temporal.io-inspired)
+   Hue family: ~264 (indigo/blue-violet) primary, ~200 cyan + ~320
+   magenta accents for charts. Signature move: dark navy sidebar in
+   light mode for high-contrast, modern-dashboard impact.
+   ============================================================ */
+:root {
+  --background: oklch(0.985 0.004 247);          /* cool off-white */
+  --foreground: oklch(0.21 0.04 265);            /* deep ink navy */
+  --card: oklch(1 0 0);                          /* pure white cards pop on tinted bg */
+  --card-foreground: oklch(0.21 0.04 265);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.21 0.04 265);
+  --primary: oklch(0.54 0.23 264);               /* electric indigo */
+  --primary-foreground: oklch(0.99 0.01 255);
+  --secondary: oklch(0.96 0.012 255);            /* faint blue-gray */
+  --secondary-foreground: oklch(0.30 0.05 265);
+  --muted: oklch(0.965 0.01 255);
+  --muted-foreground: oklch(0.52 0.03 262);
+  --accent: oklch(0.93 0.045 230);               /* light cyan-blue tint */
+  --accent-foreground: oklch(0.32 0.09 258);
+  --destructive: oklch(0.58 0.23 27.3);
+  --border: oklch(0.90 0.012 255);
+  --input: oklch(0.90 0.012 255);
+  --ring: oklch(0.54 0.23 264);
+  --chart-1: oklch(0.54 0.23 264);               /* indigo */
+  --chart-2: oklch(0.66 0.16 200);               /* cyan */
+  --chart-3: oklch(0.62 0.21 320);               /* magenta */
+  --chart-4: oklch(0.70 0.16 150);               /* green */
+  --chart-5: oklch(0.74 0.17 65);                /* amber */
+  --radius: 0.625rem;
+  /* Dark sidebar even in light mode — the striking contrast anchor */
+  --sidebar: oklch(0.20 0.035 265);
+  --sidebar-foreground: oklch(0.93 0.012 250);
+  --sidebar-primary: oklch(0.62 0.21 264);
+  --sidebar-primary-foreground: oklch(0.99 0.01 255);
+  --sidebar-accent: oklch(0.28 0.05 265);
+  --sidebar-accent-foreground: oklch(0.96 0.01 250);
+  --sidebar-border: oklch(1 0 0 / 8%);
+  --sidebar-ring: oklch(0.62 0.21 264);
+}
+
+.dark {
+  --background: oklch(0.16 0.022 265);           /* deep ink */
+  --foreground: oklch(0.96 0.008 247);
+  --card: oklch(0.205 0.025 265);
+  --card-foreground: oklch(0.96 0.008 247);
+  --popover: oklch(0.205 0.025 265);
+  --popover-foreground: oklch(0.96 0.008 247);
+  --primary: oklch(0.64 0.21 264);               /* brighter electric indigo on dark */
+  --primary-foreground: oklch(0.16 0.022 265);
+  --secondary: oklch(0.27 0.03 265);
+  --secondary-foreground: oklch(0.96 0.008 247);
+  --muted: oklch(0.27 0.03 265);
+  --muted-foreground: oklch(0.71 0.02 255);
+  --accent: oklch(0.31 0.06 252);
+  --accent-foreground: oklch(0.93 0.04 225);
+  --destructive: oklch(0.70 0.19 22.2);
+  --border: oklch(1 0 0 / 10%);
+  --input: oklch(1 0 0 / 14%);
+  --ring: oklch(0.64 0.21 264);
+  --chart-1: oklch(0.66 0.21 264);               /* indigo */
+  --chart-2: oklch(0.70 0.15 200);               /* cyan */
+  --chart-3: oklch(0.68 0.20 320);               /* magenta */
+  --chart-4: oklch(0.72 0.16 150);               /* green */
+  --chart-5: oklch(0.76 0.16 65);                /* amber */
+  --sidebar: oklch(0.13 0.018 265);              /* darker than bg for depth */
+  --sidebar-foreground: oklch(0.93 0.012 250);
+  --sidebar-primary: oklch(0.66 0.21 264);
+  --sidebar-primary-foreground: oklch(0.99 0.01 255);
+  --sidebar-accent: oklch(0.24 0.04 265);
+  --sidebar-accent-foreground: oklch(0.96 0.01 250);
+  --sidebar-border: oklch(1 0 0 / 8%);
+  --sidebar-ring: oklch(0.66 0.21 264);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+  html {
+    @apply font-sans;
+  }
+}
+
+@layer utilities {
+  /* Vivid indigo → cyan → magenta sweep for hero headings */
+  .brand-gradient-text {
+    background-image: linear-gradient(
+      100deg,
+      oklch(0.54 0.23 264),
+      oklch(0.60 0.19 296),
+      oklch(0.66 0.16 200)
+    );
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  .dark .brand-gradient-text {
+    background-image: linear-gradient(
+      100deg,
+      oklch(0.70 0.20 264),
+      oklch(0.72 0.17 300),
+      oklch(0.74 0.15 200)
+    );
+  }
+
+  /* Ambient radial glow for hero / empty-state backdrops */
+  .brand-glow {
+    background:
+      radial-gradient(60% 50% at 50% 0%, oklch(0.54 0.23 264 / 0.10), transparent 70%),
+      radial-gradient(40% 40% at 85% 30%, oklch(0.66 0.16 200 / 0.08), transparent 70%);
+  }
+
+  /* Soft tinted wash for the main content canvas (light mode).
+     Layered indigo + cyan radial tints over the base background give a
+     gentle, premium gradient transition without distracting from content. */
+  .app-canvas {
+    background-color: var(--background);
+    background-image:
+      radial-gradient(80% 60% at 100% 0%, oklch(0.54 0.23 264 / 0.05), transparent 60%),
+      radial-gradient(70% 50% at 0% 100%, oklch(0.66 0.16 200 / 0.045), transparent 55%);
+  }
+  .dark .app-canvas {
+    /* Mirror the light-mode dual wash so the transition stays balanced
+       across the full canvas instead of fading out on the right. */
+    background-image:
+      radial-gradient(80% 60% at 100% 0%, oklch(0.66 0.21 264 / 0.08), transparent 60%),
+      radial-gradient(70% 50% at 0% 100%, oklch(0.66 0.16 200 / 0.06), transparent 55%);
+  }
+}

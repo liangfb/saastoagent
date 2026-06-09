@@ -1,0 +1,5 @@
+mem0ai>=1.0.0
+opensearch-py>=2.4.0
+fastapi>=0.115.0
+uvicorn>=0.30.0
+boto3>=1.34.0

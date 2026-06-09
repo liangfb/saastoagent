@@ -1,0 +1,14 @@
+import { Module } from '@nestjs/common';
+import { SessionsController } from './sessions.controller';
+import { SessionsService } from './sessions.service';
+import { SessionStreamBroker } from './session-stream.broker';
+import { ExecutionContextManager } from './execution-context.manager';
+import { AgentNetworkModule } from '../agent-network/agent-network.module';
+
+@Module({
+  imports: [AgentNetworkModule],
+  controllers: [SessionsController],
+  providers: [SessionsService, SessionStreamBroker, ExecutionContextManager],
+  exports: [SessionsService],
+})
+export class SessionsModule {}

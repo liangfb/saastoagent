@@ -1,0 +1,242 @@
+# All 5 mock-erp services use the same Docker image,
+# differentiated by SERVICE_NAME and SERVICE_PORT env vars.
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mock-erp-sales
+  namespace: agentic-mesh
+  labels:
+    app: mock-erp-sales
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mock-erp-sales
+  template:
+    metadata:
+      labels:
+        app: mock-erp-sales
+    spec:
+      containers:
+        - name: mock-erp-sales
+          image: ACCOUNT_ID.dkr.ecr.us-west-2.amazonaws.com/agentic-mesh/mock-erp:latest
+          ports:
+            - containerPort: 9001
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi
+          env:
+            - name: SERVICE_NAME
+              value: "sales_order"
+            - name: SERVICE_PORT
+              value: "9001"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mock-erp-sales
+  namespace: agentic-mesh
+spec:
+  selector:
+    app: mock-erp-sales
+  ports:
+    - port: 9001
+      targetPort: 9001
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mock-erp-warehouse
+  namespace: agentic-mesh
+  labels:
+    app: mock-erp-warehouse
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mock-erp-warehouse
+  template:
+    metadata:
+      labels:
+        app: mock-erp-warehouse
+    spec:
+      containers:
+        - name: mock-erp-warehouse
+          image: ACCOUNT_ID.dkr.ecr.us-west-2.amazonaws.com/agentic-mesh/mock-erp:latest
+          ports:
+            - containerPort: 9002
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi
+          env:
+            - name: SERVICE_NAME
+              value: "warehouse"
+            - name: SERVICE_PORT
+              value: "9002"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mock-erp-warehouse
+  namespace: agentic-mesh
+spec:
+  selector:
+    app: mock-erp-warehouse
+  ports:
+    - port: 9002
+      targetPort: 9002
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mock-erp-procurement
+  namespace: agentic-mesh
+  labels:
+    app: mock-erp-procurement
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mock-erp-procurement
+  template:
+    metadata:
+      labels:
+        app: mock-erp-procurement
+    spec:
+      containers:
+        - name: mock-erp-procurement
+          image: ACCOUNT_ID.dkr.ecr.us-west-2.amazonaws.com/agentic-mesh/mock-erp:latest
+          ports:
+            - containerPort: 9003
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi
+          env:
+            - name: SERVICE_NAME
+              value: "procurement"
+            - name: SERVICE_PORT
+              value: "9003"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mock-erp-procurement
+  namespace: agentic-mesh
+spec:
+  selector:
+    app: mock-erp-procurement
+  ports:
+    - port: 9003
+      targetPort: 9003
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mock-erp-catalog
+  namespace: agentic-mesh
+  labels:
+    app: mock-erp-catalog
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mock-erp-catalog
+  template:
+    metadata:
+      labels:
+        app: mock-erp-catalog
+    spec:
+      containers:
+        - name: mock-erp-catalog
+          image: ACCOUNT_ID.dkr.ecr.us-west-2.amazonaws.com/agentic-mesh/mock-erp:latest
+          ports:
+            - containerPort: 9004
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi
+          env:
+            - name: SERVICE_NAME
+              value: "product_catalog"
+            - name: SERVICE_PORT
+              value: "9004"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mock-erp-catalog
+  namespace: agentic-mesh
+spec:
+  selector:
+    app: mock-erp-catalog
+  ports:
+    - port: 9004
+      targetPort: 9004
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mock-erp-finance
+  namespace: agentic-mesh
+  labels:
+    app: mock-erp-finance
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mock-erp-finance
+  template:
+    metadata:
+      labels:
+        app: mock-erp-finance
+    spec:
+      containers:
+        - name: mock-erp-finance
+          image: ACCOUNT_ID.dkr.ecr.us-west-2.amazonaws.com/agentic-mesh/mock-erp:latest
+          ports:
+            - containerPort: 9005
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi
+          env:
+            - name: SERVICE_NAME
+              value: "finance"
+            - name: SERVICE_PORT
+              value: "9005"
+            # API key the finance service requires on its data endpoints
+            # (header: X-API-Key). Mock value for the test env; replace with a
+            # real secret in production.
+            - name: FINANCE_API_KEY
+              value: "mock-finance-key-7f3a9c2e"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mock-erp-finance
+  namespace: agentic-mesh
+spec:
+  selector:
+    app: mock-erp-finance
+  ports:
+    - port: 9005
+      targetPort: 9005

@@ -1,0 +1,82 @@
+services:
+  sales-order:
+    build: .
+    container_name: erp-sales-order
+    environment:
+      - SERVICE_NAME=sales_order
+      - SERVICE_PORT=9001
+    ports:
+      - "9001:9001"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:9001/openapi.json')"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+    restart: unless-stopped
+
+  warehouse:
+    build: .
+    container_name: erp-warehouse
+    environment:
+      - SERVICE_NAME=warehouse
+      - SERVICE_PORT=9002
+    ports:
+      - "9002:9002"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:9002/openapi.json')"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+    restart: unless-stopped
+
+  procurement:
+    build: .
+    container_name: erp-procurement
+    environment:
+      - SERVICE_NAME=procurement
+      - SERVICE_PORT=9003
+    ports:
+      - "9003:9003"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:9003/openapi.json')"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+    restart: unless-stopped
+
+  product-catalog:
+    build: .
+    container_name: erp-product-catalog
+    environment:
+      - SERVICE_NAME=product_catalog
+      - SERVICE_PORT=9004
+    ports:
+      - "9004:9004"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:9004/openapi.json')"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+    restart: unless-stopped
+
+  finance:
+    build: .
+    container_name: erp-finance
+    environment:
+      - SERVICE_NAME=finance
+      - SERVICE_PORT=9005
+      # Required on finance data endpoints via the X-API-Key header.
+      - FINANCE_API_KEY=dev-finance-key
+    ports:
+      - "9005:9005"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:9005/openapi.json')"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+    restart: unless-stopped

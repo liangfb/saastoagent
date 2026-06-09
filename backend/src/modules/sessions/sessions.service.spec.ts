@@ -1,0 +1,245 @@
+/**
+ * Unit test for SessionsService.sendMessage (single-Agent ReAct path).
+ *
+ * Mocks out:
+ *   - Prisma (session/agent/bindings/execution-context/message persistence)
+ *   - MastraClientService.resolveModel (opaque token)
+ *   - createReActAgentInstance (stub agent whose generateLegacy returns canned text)
+ *   - MCP client service + registrar (we only care that the right tools are wired)
+ *   - MemoryService / LangfuseService / SessionStreamBroker — assert they fire correctly.
+ */
+
+const reactAgent = { generateLegacy: jest.fn() };
+
+jest.mock('../agent-network/agents/react.agent', () => ({
+  createReActAgentInstance: jest.fn(() => reactAgent),
+}));
+
+// langfuse SDK uses a dynamic import that breaks jest module resolution.
+jest.mock('langfuse', () => {
+  const noopSpan: any = {
+    end: jest.fn(),
+    update: jest.fn(),
+    span: jest.fn(() => noopSpan),
+    generation: jest.fn(() => noopSpan),
+  };
+  const trace: any = {
+    id: 'trace-1',
+    update: jest.fn(),
+    end: jest.fn(),
+    generation: jest.fn(() => noopSpan),
+    span: jest.fn(() => noopSpan),
+  };
+  return {
+    Langfuse: jest.fn().mockImplementation(() => ({
+      trace: jest.fn(() => trace),
+      flushAsync: jest.fn(async () => undefined),
+      shutdownAsync: jest.fn(async () => undefined),
+    })),
+  };
+});
+
+import { SessionsService } from './sessions.service';
+import { SessionStreamBroker } from './session-stream.broker';
+import { ExecutionContextManager } from './execution-context.manager';
+
+function makePrismaMock() {
+  return {
+    session: {
+      findUnique: jest.fn(),
+      create: jest.fn(),
+      delete: jest.fn(),
+    },
+    message: {
+      create: jest.fn(async ({ data }) => ({ id: `msg-${Math.random()}`, ...data })),
+    },
+    executionContext: {
+      update: jest.fn(async () => undefined),
+    },
+    agent: {
+      findUnique: jest.fn(),
+    },
+    agentMcpBinding: {
+      findMany: jest.fn<Promise<any[]>, any[]>(async () => []),
+    },
+  };
+}
+
+function makeContextsMock() {
+  return {
+    create: jest.fn(async () => ({ id: 'ctx1' })),
+    recordToolCall: jest.fn(async () => undefined),
+    complete: jest.fn(async () => undefined),
+    terminate: jest.fn(async () => undefined),
+  } as unknown as ExecutionContextManager;
+}
+
+function makeTraceMock() {
+  const generation = jest.fn(() => ({ end: jest.fn() }));
+  const span = jest.fn(() => ({ end: jest.fn() }));
+  const update = jest.fn();
+  return {
+    obj: { generation, span, update, id: 'trace-1' },
+    generation,
+    span,
+    update,
+  };
+}
+
+describe('SessionsService.sendMessage', () => {
+  let prisma: ReturnType<typeof makePrismaMock>;
+  let svc: SessionsService;
+  let broker: SessionStreamBroker;
+  let contexts: ExecutionContextManager;
+  let memory: { search: jest.Mock; store: jest.Mock };
+  let langfuse: { startTrace: jest.Mock; flush: jest.Mock };
+  let mastra: { resolveModel: jest.Mock };
+  let mcpClient: { getOrCreate: jest.Mock; closeSession: jest.Mock };
+  let registrar: { toMastraTool: jest.Mock };
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    prisma = makePrismaMock();
+    broker = new SessionStreamBroker();
+    contexts = makeContextsMock();
+    memory = {
+      search: jest.fn(async () => [{ id: 'mem1', memory: 'prefers DHL' }]),
+      store: jest.fn(async () => undefined),
+    };
+    const trace = makeTraceMock();
+    langfuse = {
+      startTrace: jest.fn(() => trace.obj),
+      flush: jest.fn(async () => undefined),
+    };
+    mastra = {
+      resolveModel: jest.fn(() => ({ __model: true })),
+    };
+    mcpClient = {
+      getOrCreate: jest.fn(async () => ({ callTool: jest.fn() })),
+      closeSession: jest.fn(async () => undefined),
+    };
+    registrar = {
+      toMastraTool: jest.fn(() => ({ __tool: true })),
+    };
+    svc = new SessionsService(
+      prisma as any,
+      mcpClient as any,
+      registrar as any,
+      mastra as any,
+      memory as any,
+      broker,
+      contexts,
+      langfuse as any,
+    );
+  });
+
+  it('runs the single ReAct agent end-to-end', async () => {
+    prisma.session.findUnique.mockResolvedValue({
+      id: 's1',
+      userId: 'u1',
+      agent: {
+        id: 'a1',
+        name: 'Sales',
+        agentType: 'specialist',
+        systemPrompt: 'You sell.',
+        llmConfig: { provider: 'anthropic', modelId: 'claude-sonnet' },
+      },
+    });
+    reactAgent.generateLegacy.mockResolvedValue({
+      text: 'hi',
+      toolCalls: [],
+      usage: { total: 10 },
+    });
+
+    const events: any[] = [];
+    broker.stream('s1').subscribe((e) => events.push(e));
+
+    const result = await svc.sendMessage('s1', { content: 'hello' }, 'u1');
+
+    expect(result.content).toBe('hi');
+    // user + assistant messages both persisted
+    const createdRoles = prisma.message.create.mock.calls.map(
+      (c: any) => c[0].data.role,
+    );
+    expect(createdRoles).toEqual(['user', 'assistant']);
+    // execution context lifecycle
+    expect(contexts.create).toHaveBeenCalled();
+    expect(contexts.complete).toHaveBeenCalledWith('ctx1');
+    // langfuse lifecycle
+    expect(langfuse.startTrace).toHaveBeenCalled();
+    expect(langfuse.flush).toHaveBeenCalled();
+    // memory was searched and stored
+    expect(memory.search).toHaveBeenCalledWith(
+      expect.objectContaining({ query: 'hello', userId: 'u1', agentId: 'a1' }),
+    );
+    expect(memory.store).toHaveBeenCalled();
+    // broker emitted response + done
+    const types = events.map((e) => e.type);
+    expect(types).toContain('response');
+    expect(types).toContain('done');
+    // No routing event in single-agent mode
+    expect(types).not.toContain('routing');
+  });
+
+  it('runs identically for legacy router-typed agents (agentType is ignored)', async () => {
+    prisma.session.findUnique.mockResolvedValue({
+      id: 's1',
+      userId: 'u1',
+      agent: {
+        id: 'legacy-router',
+        name: 'Legacy',
+        agentType: 'router',
+        systemPrompt: 'old prompt',
+        llmConfig: { provider: 'anthropic', modelId: 'claude-haiku' },
+      },
+    });
+    reactAgent.generateLegacy.mockResolvedValue({ text: 'reused', toolCalls: [] });
+
+    const result = await svc.sendMessage('s1', { content: 'hi' }, 'u1');
+    expect(result.content).toBe('reused');
+    // Single ReAct agent ran exactly once — no router pre-flight pass.
+    expect(reactAgent.generateLegacy).toHaveBeenCalledTimes(1);
+  });
+
+  it('emits error event and terminates context when agent throws', async () => {
+    prisma.session.findUnique.mockResolvedValue({
+      id: 's1',
+      userId: 'u1',
+      agent: {
+        id: 'a1',
+        name: 'Sales',
+        agentType: 'specialist',
+        systemPrompt: 'x',
+        llmConfig: { provider: 'anthropic', modelId: 'claude-sonnet' },
+      },
+    });
+    reactAgent.generateLegacy.mockRejectedValue(new Error('boom'));
+
+    const events: any[] = [];
+    broker.stream('s1').subscribe((e) => events.push(e));
+
+    await expect(svc.sendMessage('s1', { content: 'hi' }, 'u1')).rejects.toThrow('boom');
+    expect(events.map((e) => e.type)).toContain('error');
+    expect(contexts.terminate).toHaveBeenCalled();
+  });
+
+  it('swallows memory failures so chat keeps working', async () => {
+    memory.search.mockRejectedValue(new Error('mem0 down'));
+    memory.store.mockRejectedValue(new Error('mem0 down'));
+    prisma.session.findUnique.mockResolvedValue({
+      id: 's1',
+      userId: 'u1',
+      agent: {
+        id: 'a1',
+        name: 'Sales',
+        agentType: 'specialist',
+        systemPrompt: 'x',
+        llmConfig: { provider: 'anthropic', modelId: 'claude-sonnet' },
+      },
+    });
+    reactAgent.generateLegacy.mockResolvedValue({ text: 'ok', toolCalls: [] });
+
+    const result = await svc.sendMessage('s1', { content: 'hi' }, 'u1');
+    expect(result.content).toBe('ok');
+  });
+});

@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SaaS to Agent Mesh</title>
+    <script>
+      // Apply persisted theme synchronously to avoid a flash of light theme
+      // on dark-mode users. Mirrored in src/stores/theme.store.ts — keep in sync.
+      (function () {
+        try {
+          var stored = localStorage.getItem('theme_mode');
+          var mode = stored === 'light' || stored === 'dark' || stored === 'auto' ? stored : 'auto';
+          var dark =
+            mode === 'dark' ||
+            (mode === 'auto' &&
+              window.matchMedia &&
+              window.matchMedia('(prefers-color-scheme: dark)').matches);
+          if (dark) document.documentElement.classList.add('dark');
+          document.documentElement.style.colorScheme = dark ? 'dark' : 'light';
+        } catch (_) {
+          /* ignore */
+        }
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

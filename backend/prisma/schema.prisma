@@ -1,0 +1,498 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================
+// Enums
+// ============================================================
+
+enum AuthType {
+  api_key
+  oauth2
+  bearer_token
+}
+
+enum SourceType {
+  url
+  file
+  manual
+}
+
+enum ParseStatus {
+  pending
+  parsing
+  parsed
+  failed
+}
+
+enum AgentType {
+  router
+  specialist
+}
+
+enum McpServerStatus {
+  pending
+  generating
+  ready
+  failed
+  running
+  stopped
+}
+
+enum AsyncTaskType {
+  openapi_parse
+  semantic_enhance
+  mcp_generate
+}
+
+enum AsyncTaskStatus {
+  pending
+  running
+  completed
+  failed
+  cancelled
+}
+
+enum SessionStatus {
+  active
+  closed
+}
+
+enum MessageRole {
+  user
+  assistant
+  system
+  tool
+}
+
+enum ExecutionContextStatus {
+  active
+  completed
+  timeout
+  exceeded_limit
+  cancelled
+}
+
+enum LlmProvider {
+  openai
+  anthropic
+  google
+  bedrock
+}
+
+enum UsageType {
+  semantic_enhancement
+  agent_reasoning
+  intent_classification
+}
+
+// ============================================================
+// 0. Application Users (login accounts)
+// ============================================================
+
+model User {
+  id           String   @id @default(uuid()) @db.Uuid
+  username     String   @unique @db.VarChar(255)
+  passwordHash String   @map("password_hash") @db.VarChar(255)
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  @@map("users")
+}
+
+// ============================================================
+// 1. Authentication Credentials
+// ============================================================
+
+model Credential {
+  id        String    @id @default(uuid()) @db.Uuid
+  name      String    @db.VarChar(255)
+  authType  AuthType  @map("auth_type")
+  config    Json // Credential config JSON (plaintext in MVP, migrated to encryption in GA)
+  status    String    @default("active") @db.VarChar(20)
+  expiresAt DateTime? @map("expires_at") @db.Timestamptz
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+
+  openapiSources OpenapiSource[]
+
+  @@map("credentials")
+}
+
+// ============================================================
+// 2. OpenAPI Source
+// ============================================================
+
+model OpenapiSource {
+  id                  String      @id @default(uuid()) @db.Uuid
+  name                String      @db.VarChar(255)
+  sourceType          SourceType  @map("source_type")
+  sourceUrl           String?     @map("source_url") @db.Text
+  baseUrl             String?     @map("base_url") @db.Text
+  specVersion         String?     @map("spec_version") @db.VarChar(10)
+  rawSpec             Json?       @map("raw_spec")
+  businessDescription String?     @map("business_description") @db.Text
+  sopDocument         String?     @map("sop_document") @db.Text
+  credentialId        String?     @map("credential_id") @db.Uuid
+  parseStatus         ParseStatus @default(pending) @map("parse_status")
+  createdAt           DateTime    @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt           DateTime    @updatedAt @map("updated_at") @db.Timestamptz
+
+  credential Credential? @relation(fields: [credentialId], references: [id], onDelete: SetNull)
+  endpoints  Endpoint[]
+  mcpServers McpServer[]
+
+  @@index([credentialId], map: "idx_openapi_sources_credential")
+  @@map("openapi_sources")
+}
+
+// ============================================================
+// 3. Endpoint
+// ============================================================
+
+model Endpoint {
+  id                   String   @id @default(uuid()) @db.Uuid
+  openapiSourceId      String   @map("openapi_source_id") @db.Uuid
+  path                 String   @db.VarChar(500)
+  httpMethod           String   @map("http_method") @db.VarChar(10)
+  operationId          String?  @map("operation_id") @db.VarChar(255)
+  summary              String?  @db.Text
+  originalDescription  String?  @map("original_description") @db.Text
+  requestSchema        Json?    @map("request_schema")
+  responseSchema       Json?    @map("response_schema")
+  requiresManualReview Boolean  @default(false) @map("requires_manual_review")
+  createdAt            DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt            DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  openapiSource        OpenapiSource         @relation(fields: [openapiSourceId], references: [id], onDelete: Cascade)
+  parameters           EndpointParameter[]
+  semanticDescriptions SemanticDescription[]
+  mcpTools             McpTool[]
+
+  @@unique([openapiSourceId, path, httpMethod])
+  @@index([openapiSourceId], map: "idx_endpoints_source")
+  @@map("endpoints")
+}
+
+// ============================================================
+// 4. Endpoint Parameters
+// ============================================================
+
+model EndpointParameter {
+  id                  String   @id @default(uuid()) @db.Uuid
+  endpointId          String   @map("endpoint_id") @db.Uuid
+  name                String   @db.VarChar(255)
+  location            String   @db.VarChar(20) // 'path' | 'query' | 'header' | 'body'
+  dataType            String?  @map("data_type") @db.VarChar(50)
+  required            Boolean  @default(false)
+  originalDescription String?  @map("original_description") @db.Text
+  schemaDetail        Json?    @map("schema_detail")
+  createdAt           DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  endpoint Endpoint @relation(fields: [endpointId], references: [id], onDelete: Cascade)
+
+  @@index([endpointId], map: "idx_endpoint_params")
+  @@map("endpoint_parameters")
+}
+
+// ============================================================
+// 5. Semantic Descriptions (versioned)
+// ============================================================
+
+model SemanticDescription {
+  id                    String   @id @default(uuid()) @db.Uuid
+  endpointId            String   @map("endpoint_id") @db.Uuid
+  enhancedSummary       String   @map("enhanced_summary") @db.Text
+  enhancedDescription   String   @map("enhanced_description") @db.Text
+  parameterDescriptions Json?    @map("parameter_descriptions")
+  usageExamples         Json?    @map("usage_examples")
+  llmModel              String?  @map("llm_model") @db.VarChar(100)
+  llmPromptTemplate     String?  @map("llm_prompt_template") @db.VarChar(255)
+  enhancementVersion    Int      @default(1) @map("enhancement_version")
+  reviewed              Boolean  @default(false)
+  createdAt             DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt             DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  endpoint Endpoint @relation(fields: [endpointId], references: [id], onDelete: Cascade)
+
+  @@unique([endpointId, enhancementVersion])
+  @@index([endpointId], map: "idx_semantic_endpoint")
+  @@map("semantic_descriptions")
+}
+
+// ============================================================
+// 6. MCP Server
+// ============================================================
+
+model McpServer {
+  id                 String          @id @default(uuid()) @db.Uuid
+  openapiSourceId    String          @map("openapi_source_id") @db.Uuid
+  name               String          @db.VarChar(255)
+  status             McpServerStatus @default(pending)
+  generationConfig   Json?           @map("generation_config")
+  serverConfig       Json?           @map("server_config")
+  deployArtifactPath String?         @map("deploy_artifact_path") @db.Text
+  errorMessage       String?         @map("error_message") @db.Text
+  createdAt          DateTime        @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt          DateTime        @updatedAt @map("updated_at") @db.Timestamptz
+
+  openapiSource OpenapiSource @relation(fields: [openapiSourceId], references: [id], onDelete: Cascade)
+  tools         McpTool[]
+
+  @@index([openapiSourceId], map: "idx_mcp_servers_source")
+  @@map("mcp_servers")
+}
+
+// ============================================================
+// 7. MCP Tool
+// ============================================================
+
+model McpTool {
+  id              String   @id @default(uuid()) @db.Uuid
+  mcpServerId     String   @map("mcp_server_id") @db.Uuid
+  endpointId      String?  @map("endpoint_id") @db.Uuid
+  toolName        String   @map("tool_name") @db.VarChar(255)
+  toolDescription String   @map("tool_description") @db.Text
+  inputSchema     Json     @map("input_schema")
+  outputSchema    Json?    @map("output_schema")
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  mcpServer     McpServer         @relation(fields: [mcpServerId], references: [id], onDelete: Cascade)
+  endpoint      Endpoint?         @relation(fields: [endpointId], references: [id], onDelete: SetNull)
+  agentBindings AgentMcpBinding[]
+
+  @@index([mcpServerId], map: "idx_mcp_tools_server")
+  @@map("mcp_tools")
+}
+
+// ============================================================
+// 8. Agent
+// ============================================================
+
+model Agent {
+  id                 String    @id @default(uuid()) @db.Uuid
+  name               String    @db.VarChar(255)
+  agentType          AgentType @map("agent_type")
+  description        String?   @db.Text
+  systemPrompt       String?   @map("system_prompt") @db.Text
+  llmConfigId        String?   @map("llm_config_id") @db.Uuid
+  outputSchema       Json?     @map("output_schema")
+  approvalConditions Json?     @map("approval_conditions")
+  retryPolicy        Json      @default("{\"max_retries\": 3, \"backoff_factor\": 2}") @map("retry_policy")
+  isActive           Boolean   @default(true) @map("is_active")
+  createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt          DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+
+  llmConfig              LlmConfig?        @relation(fields: [llmConfigId], references: [id], onDelete: SetNull)
+  mcpBindings            AgentMcpBinding[]
+  routerMappingsAsRouter RouterMapping[]   @relation("RouterAgent")
+  routerMappingsAsTarget RouterMapping[]   @relation("TargetAgent")
+  sessions               Session[]
+
+  @@map("agents")
+}
+
+// ============================================================
+// 9. Agent-MCP Binding
+// ============================================================
+
+model AgentMcpBinding {
+  id        String   @id @default(uuid()) @db.Uuid
+  agentId   String   @map("agent_id") @db.Uuid
+  mcpToolId String   @map("mcp_tool_id") @db.Uuid
+  enabled   Boolean  @default(true)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  agent   Agent   @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  mcpTool McpTool @relation(fields: [mcpToolId], references: [id], onDelete: Cascade)
+
+  @@unique([agentId, mcpToolId])
+  @@index([agentId], map: "idx_agent_mcp_agent")
+  @@map("agent_mcp_bindings")
+}
+
+// ============================================================
+// 10. Router Routing Mappings
+// ============================================================
+
+model RouterMapping {
+  id            String   @id @default(uuid()) @db.Uuid
+  routerAgentId String   @map("router_agent_id") @db.Uuid
+  intentPattern String   @map("intent_pattern") @db.VarChar(500)
+  targetAgentId String   @map("target_agent_id") @db.Uuid
+  priority      Int      @default(0)
+  isActive      Boolean  @default(true) @map("is_active")
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt     DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  routerAgent Agent @relation("RouterAgent", fields: [routerAgentId], references: [id], onDelete: Cascade)
+  targetAgent Agent @relation("TargetAgent", fields: [targetAgentId], references: [id], onDelete: Cascade)
+
+  @@index([routerAgentId], map: "idx_router_mappings_router")
+  @@map("router_mappings")
+}
+
+// ============================================================
+// 11. Agent Memory (external service: mem0)
+// ============================================================
+// Agent memory is no longer stored in PostgreSQL.
+// It is instead managed by the mem0 open-source project (self-hosted), backed by the OpenSearch vector database.
+// The NestJS backend calls the mem0 REST API via memory.service.ts.
+// Memory scopes: user_id (user-level), agent_id (Agent-level), run_id (session-level).
+
+// ============================================================
+// 12. LLM Config
+// ============================================================
+
+model LlmConfig {
+  id            String      @id @default(uuid()) @db.Uuid
+  provider      LlmProvider
+  name          String      @db.VarChar(255)
+  apiEndpoint   String?     @map("api_endpoint") @db.Text
+  credentials   Json // Credential JSON (plaintext in MVP, migrated to encryption in GA)
+  region        String?     @db.VarChar(50) // AWS Region (Bedrock only)
+  modelId       String      @map("model_id") @db.VarChar(100)
+  defaultParams Json        @default("{}") @map("default_params")
+  isActive      Boolean     @default(true) @map("is_active")
+  createdAt     DateTime    @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt     DateTime    @updatedAt @map("updated_at") @db.Timestamptz
+
+  agents      Agent[]
+  assignments LlmModelAssignment[] @relation("PrimaryConfig")
+  fallbacks   LlmModelAssignment[] @relation("FallbackConfig")
+
+  @@map("llm_configs")
+}
+
+// ============================================================
+// 13. Model Usage Assignments
+// ============================================================
+
+model LlmModelAssignment {
+  id                  String    @id @default(uuid()) @db.Uuid
+  usageType           UsageType @unique @map("usage_type")
+  llmConfigId         String    @map("llm_config_id") @db.Uuid
+  fallbackLlmConfigId String?   @map("fallback_llm_config_id") @db.Uuid
+  createdAt           DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt           DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+
+  llmConfig         LlmConfig  @relation("PrimaryConfig", fields: [llmConfigId], references: [id])
+  fallbackLlmConfig LlmConfig? @relation("FallbackConfig", fields: [fallbackLlmConfigId], references: [id])
+
+  @@map("llm_model_assignments")
+}
+
+// ============================================================
+// 14. Sessions
+// ============================================================
+
+model Session {
+  id        String        @id @default(uuid()) @db.Uuid
+  userId    String        @map("user_id") @db.VarChar(255)
+  title     String?       @db.VarChar(500)
+  agentId   String?       @map("agent_id") @db.Uuid
+  status    SessionStatus @default(active)
+  createdAt DateTime      @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt DateTime      @updatedAt @map("updated_at") @db.Timestamptz
+
+  agent             Agent?             @relation(fields: [agentId], references: [id], onDelete: SetNull)
+  messages          Message[]
+  executionContexts ExecutionContext[]
+
+  @@index([userId, createdAt(sort: Desc)], map: "idx_sessions_user")
+  @@map("sessions")
+}
+
+// ============================================================
+// 15. Messages
+// ============================================================
+
+model Message {
+  id        String      @id @default(uuid()) @db.Uuid
+  sessionId String      @map("session_id") @db.Uuid
+  role      MessageRole
+  content   String      @db.Text
+  metadata  Json?
+  createdAt DateTime    @default(now()) @map("created_at") @db.Timestamptz
+
+  session           Session            @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  executionContexts ExecutionContext[]
+
+  @@index([sessionId, createdAt], map: "idx_messages_session")
+  @@map("messages")
+}
+
+// ============================================================
+// 16. Execution Context
+// ============================================================
+
+model ExecutionContext {
+  id                 String                 @id @default(uuid()) @db.Uuid
+  sessionId          String                 @map("session_id") @db.Uuid
+  messageId          String?                @map("message_id") @db.Uuid
+  userId             String                 @map("user_id") @db.VarChar(255)
+  traceId            String                 @unique @map("trace_id") @db.VarChar(64)
+  allowedTools       Json?                  @map("allowed_tools")
+  allowedDomains     Json?                  @map("allowed_domains")
+  maxApiCalls        Int                    @default(50) @map("max_api_calls")
+  maxDurationSeconds Int                    @default(300) @map("max_duration_seconds")
+  currentApiCalls    Int                    @default(0) @map("current_api_calls")
+  status             ExecutionContextStatus @default(active)
+  startedAt          DateTime               @default(now()) @map("started_at") @db.Timestamptz
+  completedAt        DateTime?              @map("completed_at") @db.Timestamptz
+  terminationReason  String?                @map("termination_reason") @db.Text
+  createdAt          DateTime               @default(now()) @map("created_at") @db.Timestamptz
+
+  session Session  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  message Message? @relation(fields: [messageId], references: [id])
+
+  @@index([sessionId], map: "idx_exec_ctx_session")
+  @@map("execution_contexts")
+}
+
+// ============================================================
+// 17. Async Tasks
+// ============================================================
+
+model AsyncTask {
+  id           String          @id @default(uuid()) @db.Uuid
+  taskType     AsyncTaskType   @map("task_type")
+  referenceId  String?         @map("reference_id") @db.Uuid
+  bullmqJobId  String?         @map("bullmq_job_id") @db.VarChar(255)
+  status       AsyncTaskStatus @default(pending)
+  progress     Int             @default(0)
+  result       Json?
+  errorMessage String?         @map("error_message") @db.Text
+  createdAt    DateTime        @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt    DateTime        @updatedAt @map("updated_at") @db.Timestamptz
+
+  @@index([taskType, status], map: "idx_async_tasks_type_status")
+  @@index([referenceId], map: "idx_async_tasks_reference")
+  @@map("async_tasks")
+}
+
+// ============================================================
+// 18. Audit Log (immutable, append-only)
+// ============================================================
+
+model AuditLog {
+  id           BigInt   @id @default(autoincrement())
+  traceId      String   @map("trace_id") @db.VarChar(64)
+  userId       String?  @map("user_id") @db.VarChar(255)
+  action       String   @db.VarChar(100)
+  resourceType String?  @map("resource_type") @db.VarChar(50)
+  resourceId   String?  @map("resource_id") @db.Uuid
+  details      Json?
+  ipAddress    String?  @map("ip_address") @db.Inet
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  @@index([traceId], map: "idx_audit_logs_trace")
+  @@index([userId, createdAt(sort: Desc)], map: "idx_audit_logs_user")
+  @@index([action, createdAt(sort: Desc)], map: "idx_audit_logs_action")
+  @@map("audit_logs")
+}

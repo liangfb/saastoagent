@@ -1,0 +1,22 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: app-config
+  namespace: agentic-mesh
+data:
+  NODE_ENV: "production"
+  PORT: "8000"
+  # These values are filled after terraform apply using terraform output
+  MEM0_BASE_URL: "http://mem0:8080"
+  # Langfuse Cloud (US region). Keys live in app-secrets.
+  LANGFUSE_BASE_URL: "https://us.cloud.langfuse.com"
+  # Mock ERP service URLs (cluster-internal)
+  MOCK_ERP_SALES_URL: "http://mock-erp-sales:9001"
+  MOCK_ERP_WAREHOUSE_URL: "http://mock-erp-warehouse:9002"
+  MOCK_ERP_PROCUREMENT_URL: "http://mock-erp-procurement:9003"
+  MOCK_ERP_CATALOG_URL: "http://mock-erp-catalog:9004"
+  MOCK_ERP_FINANCE_URL: "http://mock-erp-finance:9005"
+  K8S_NAMESPACE: "agentic-mesh"
+  # ECR image for the generic MCP runtime. deploy-k8s.sh rewrites the
+  # ACCOUNT_ID + region segment; keep the placeholder so it gets filled.
+  MCP_RUNTIME_IMAGE: "ACCOUNT_ID.dkr.ecr.us-west-2.amazonaws.com/agentic-mesh-dev-mcp-runtime:latest"
