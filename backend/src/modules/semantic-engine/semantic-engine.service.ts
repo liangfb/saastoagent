@@ -23,6 +23,7 @@ import {
   loadCredentialSecret,
   mcpRuntimeImage,
 } from './k8s/manifest-helpers';
+import { AuditLogService } from '../observability/audit-log.service';
 
 @Injectable()
 export class SemanticEngineService {
@@ -33,6 +34,7 @@ export class SemanticEngineService {
     @InjectQueue('semantic-enhance') private enhanceQueue: Queue,
     @InjectQueue('mcp-generate') private generateQueue: Queue,
     private readonly deployer: McpServerDeployer,
+    private readonly auditLog?: AuditLogService,
   ) {}
 
   // ============================================================
@@ -66,7 +68,7 @@ export class SemanticEngineService {
       baseUrl = baseUrl ?? extractUpstreamBaseUrl(dto.sourceUrl);
     }
 
-    return this.prisma.openapiSource.create({
+    const created = await this.prisma.openapiSource.create({
       data: {
         name: dto.name,
         sourceType: dto.sourceType,
@@ -78,6 +80,12 @@ export class SemanticEngineService {
         ...(rawSpec !== undefined && { rawSpec, specVersion }),
       },
     });
+    await this.recordAudit('openapi.source.created', 'openapi_source', created.id, {
+      name: created.name,
+      sourceType: created.sourceType,
+      baseUrl: created.baseUrl,
+    });
+    return created;
   }
 
   async previewOpenapiSource(sourceUrl?: string) {
@@ -181,12 +189,20 @@ export class SemanticEngineService {
         : { disconnect: true };
     }
 
-    return this.prisma.openapiSource.update({ where: { id }, data });
+    const updated = await this.prisma.openapiSource.update({ where: { id }, data });
+    await this.recordAudit('openapi.source.updated', 'openapi_source', id, {
+      name: updated.name,
+      fields: Object.keys(dto),
+    });
+    return updated;
   }
 
   async deleteOpenapiSource(id: string) {
-    await this.findOpenapiSourceById(id);
+    const source = await this.findOpenapiSourceById(id);
     await this.prisma.openapiSource.delete({ where: { id } });
+    await this.recordAudit('openapi.source.deleted', 'openapi_source', id, {
+      name: source.name,
+    });
     return { deleted: true };
   }
 
@@ -230,6 +246,10 @@ export class SemanticEngineService {
       where: { id },
       data: { parseStatus: 'parsing' },
     });
+    await this.recordAudit('openapi.parse.queued', 'openapi_source', id, {
+      taskId: task.id,
+      sourceName: source.name,
+    });
     return { taskId: task.id, status: 'pending' };
   }
 
@@ -247,11 +267,15 @@ export class SemanticEngineService {
       where: { id: task.id },
       data: { bullmqJobId: String(job.id) },
     });
+    await this.recordAudit('semantic.enhance.queued', 'openapi_source', id, {
+      taskId: task.id,
+      sourceName: source.name,
+    });
     return { taskId: task.id, status: 'pending' };
   }
 
   async generateMcp(sourceId: string) {
-    await this.findOpenapiSourceById(sourceId);
+    const source = await this.findOpenapiSourceById(sourceId);
     const task = await this.asyncTasks.create({
       taskType: AsyncTaskType.mcp_generate,
       referenceId: sourceId,
@@ -260,6 +284,10 @@ export class SemanticEngineService {
     await this.prisma.asyncTask.update({
       where: { id: task.id },
       data: { bullmqJobId: String(job.id) },
+    });
+    await this.recordAudit('mcp.generate.queued', 'openapi_source', sourceId, {
+      taskId: task.id,
+      sourceName: source.name,
     });
     return { taskId: task.id, status: 'pending' };
   }
@@ -398,12 +426,22 @@ export class SemanticEngineService {
         where: { id },
         data: { status: 'running', errorMessage: null },
       });
+      await this.recordAudit('mcp.server.started', 'mcp_server', id, {
+        mode: 'scale',
+        slug,
+        namespace,
+      });
       return { started: true };
     } catch (err: any) {
       const msg = err?.message ?? String(err);
       await this.prisma.mcpServer.update({
         where: { id },
         data: { status: 'failed', errorMessage: msg },
+      });
+      await this.recordAudit('mcp.server.failed', 'mcp_server', id, {
+        operation: 'start',
+        mode: 'scale',
+        error: msg,
       });
       if (err instanceof BadRequestException) throw err;
       throw new BadRequestException(`Start failed: ${msg}`);
@@ -507,6 +545,11 @@ export class SemanticEngineService {
           } as Prisma.InputJsonValue,
         },
       });
+      await this.recordAudit('mcp.server.started', 'mcp_server', id, {
+        mode: 'deploy',
+        endpointUrl: deployResult.endpointUrl,
+        namespace,
+      });
 
       return { started: true, deployed: true, endpointUrl: deployResult.endpointUrl };
     } catch (err: any) {
@@ -514,6 +557,11 @@ export class SemanticEngineService {
       await this.prisma.mcpServer.update({
         where: { id },
         data: { status: 'failed', errorMessage: msg },
+      });
+      await this.recordAudit('mcp.server.failed', 'mcp_server', id, {
+        operation: 'start',
+        mode: 'deploy',
+        error: msg,
       });
       throw new BadRequestException(`Start failed: ${msg}`);
     }
@@ -526,6 +574,9 @@ export class SemanticEngineService {
     if (!slug) {
       // Legacy server with no K8s deployment — just record DB state.
       await this.prisma.mcpServer.update({ where: { id }, data: { status: 'stopped' } });
+      await this.recordAudit('mcp.server.stopped', 'mcp_server', id, {
+        mode: 'db_state_only',
+      });
       return { stopped: true, note: 'No Kubernetes deployment to scale; DB state updated only.' };
     }
     const namespace = process.env.K8S_NAMESPACE ?? 'agentic-mesh';
@@ -533,6 +584,11 @@ export class SemanticEngineService {
     if (!(await this.deployer.deploymentExists({ slug, namespace }))) {
       // Deployment already gone (manually deleted, etc.) — converge DB to stopped.
       await this.prisma.mcpServer.update({ where: { id }, data: { status: 'stopped' } });
+      await this.recordAudit('mcp.server.stopped', 'mcp_server', id, {
+        mode: 'deployment_absent',
+        slug,
+        namespace,
+      });
       return { stopped: true, note: 'Deployment already absent; DB state updated.' };
     }
 
@@ -550,10 +606,43 @@ export class SemanticEngineService {
         where: { id },
         data: { status: 'stopped', errorMessage: null },
       });
+      await this.recordAudit('mcp.server.stopped', 'mcp_server', id, {
+        mode: 'scale',
+        slug,
+        namespace,
+        note,
+      });
       return note ? { stopped: true, note } : { stopped: true };
     } catch (err: any) {
       const msg = err?.message ?? String(err);
+      await this.recordAudit('mcp.server.failed', 'mcp_server', id, {
+        operation: 'stop',
+        error: msg,
+      });
       throw new BadRequestException(`Stop failed: ${msg}`);
+    }
+  }
+
+  private async recordAudit(
+    action:
+      | 'openapi.source.created'
+      | 'openapi.source.updated'
+      | 'openapi.source.deleted'
+      | 'openapi.parse.queued'
+      | 'semantic.enhance.queued'
+      | 'mcp.generate.queued'
+      | 'mcp.server.started'
+      | 'mcp.server.stopped'
+      | 'mcp.server.failed',
+    resourceType: 'openapi_source' | 'mcp_server',
+    resourceId: string,
+    details: Record<string, unknown>,
+  ) {
+    if (!this.auditLog) return;
+    try {
+      await this.auditLog.record({ action, resourceType, resourceId, details });
+    } catch {
+      // Audit logging is best-effort and should not break control-plane actions.
     }
   }
 

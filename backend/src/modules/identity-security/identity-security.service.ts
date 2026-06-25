@@ -9,6 +9,7 @@ import {
   buildPrismaSkipTake,
 } from '../shared/pagination';
 import type { CreateCredentialDto, UpdateCredentialDto } from './dto/credential.dto';
+import { AuditLogService } from '../observability/audit-log.service';
 
 /** Mask sensitive fields in credential config */
 function maskConfig(config: Record<string, unknown>): Record<string, unknown> {
@@ -28,6 +29,7 @@ export class IdentitySecurityService {
   constructor(
     private prisma: PrismaService,
     private readonly sync: CredentialSyncService,
+    private readonly auditLog?: AuditLogService,
   ) {}
 
   async createCredential(dto: CreateCredentialDto) {
@@ -39,6 +41,11 @@ export class IdentitySecurityService {
         status: dto.status ?? 'active',
         expiresAt: dto.expiresAt ? new Date(dto.expiresAt) : null,
       },
+    });
+    await this.recordCredentialAudit('credential.created', created.id, {
+      name: created.name,
+      authType: created.authType,
+      status: created.status,
     });
     return { ...created, config: maskConfig(created.config as Record<string, unknown>) };
   }
@@ -77,6 +84,10 @@ export class IdentitySecurityService {
   async revealCredential(id: string) {
     const cred = await this.prisma.credential.findUnique({ where: { id } });
     if (!cred) throw new NotFoundException(`Credential ${id} not found`);
+    await this.recordCredentialAudit('credential.revealed', cred.id, {
+      name: cred.name,
+      authType: cred.authType,
+    });
     return cred;
   }
 
@@ -95,16 +106,26 @@ export class IdentitySecurityService {
       },
     });
     await this.sync.enqueueSync(id);
+    await this.recordCredentialAudit('credential.updated', updated.id, {
+      name: updated.name,
+      authType: updated.authType,
+      status: updated.status,
+      fields: Object.keys(dto),
+    });
     return { ...updated, config: maskConfig(updated.config as Record<string, unknown>) };
   }
 
   async deleteCredential(id: string) {
-    await this.findCredentialById(id);
+    const existing = await this.findCredentialById(id);
     const refCount = await this.prisma.openapiSource.count({ where: { credentialId: id } });
     if (refCount > 0) {
       throw new ConflictException('Credential is still referenced by OpenAPI sources');
     }
     await this.prisma.credential.delete({ where: { id } });
+    await this.recordCredentialAudit('credential.deleted', id, {
+      name: existing.name,
+      authType: existing.authType,
+    });
     return { deleted: true };
   }
 
@@ -114,9 +135,37 @@ export class IdentitySecurityService {
     // MVP: basic validation that config is non-empty
     const config = cred.config as Record<string, unknown>;
     const hasKeys = Object.keys(config).length > 0;
+    await this.recordCredentialAudit('credential.tested', cred.id, {
+      name: cred.name,
+      authType: cred.authType,
+      reachable: hasKeys,
+    });
     return {
       reachable: hasKeys,
       message: hasKeys ? 'Credential config is present' : 'Credential config is empty',
     };
+  }
+
+  private async recordCredentialAudit(
+    action:
+      | 'credential.created'
+      | 'credential.updated'
+      | 'credential.deleted'
+      | 'credential.revealed'
+      | 'credential.tested',
+    credentialId: string,
+    details: Record<string, unknown>,
+  ) {
+    if (!this.auditLog) return;
+    try {
+      await this.auditLog.record({
+        action,
+        resourceType: 'credential',
+        resourceId: credentialId,
+        details,
+      });
+    } catch {
+      // Audit logging is best-effort and should not break credential workflows.
+    }
   }
 }
