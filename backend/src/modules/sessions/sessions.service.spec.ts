@@ -96,6 +96,7 @@ describe('SessionsService.sendMessage', () => {
   let mastra: { resolveModel: jest.Mock };
   let mcpClient: { getOrCreate: jest.Mock; closeSession: jest.Mock };
   let registrar: { toMastraTool: jest.Mock };
+  let auditLog: { record: jest.Mock };
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -121,6 +122,9 @@ describe('SessionsService.sendMessage', () => {
     registrar = {
       toMastraTool: jest.fn(() => ({ __tool: true })),
     };
+    auditLog = {
+      record: jest.fn(async () => undefined),
+    };
     svc = new SessionsService(
       prisma as any,
       mcpClient as any,
@@ -130,6 +134,7 @@ describe('SessionsService.sendMessage', () => {
       broker,
       contexts,
       langfuse as any,
+      auditLog as any,
     );
   });
 
@@ -241,5 +246,101 @@ describe('SessionsService.sendMessage', () => {
 
     const result = await svc.sendMessage('s1', { content: 'hi' }, 'u1');
     expect(result.content).toBe('ok');
+  });
+
+  it('records audit events for MCP tool call lifecycle hooks', async () => {
+    let hooks: any;
+    registrar.toMastraTool.mockImplementation((_client, _tool, lifecycleHooks) => {
+      hooks = lifecycleHooks;
+      return { __tool: true };
+    });
+    prisma.agentMcpBinding.findMany.mockResolvedValue([
+      {
+        id: 'binding-1',
+        mcpTool: {
+          id: '11111111-1111-1111-1111-111111111111',
+          mcpServerId: '22222222-2222-2222-2222-222222222222',
+          toolName: 'list_orders',
+          toolDescription: 'List orders',
+          inputSchema: { type: 'object' },
+          mcpServer: {
+            serverConfig: { endpointUrl: 'http://mcp-server/mcp' },
+          },
+        },
+      },
+    ]);
+    prisma.session.findUnique.mockResolvedValue({
+      id: 's1',
+      userId: 'u1',
+      agent: {
+        id: 'a1',
+        name: 'Sales',
+        agentType: 'specialist',
+        systemPrompt: 'x',
+        llmConfig: { provider: 'anthropic', modelId: 'claude-sonnet' },
+      },
+    });
+    reactAgent.generateLegacy.mockResolvedValue({ text: 'ok', toolCalls: [] });
+
+    await svc.sendMessage('s1', { content: 'hi' }, 'u1');
+    expect(hooks).toBeDefined();
+
+    await hooks.onBefore({
+      toolName: 'list_orders',
+      args: { customerId: 'c1', token: 'secret-token' },
+    });
+    await hooks.onSuccess({
+      toolName: 'list_orders',
+      result: { ok: true, password: 'secret-password' },
+      durationMs: 17,
+    });
+    await hooks.onError({
+      toolName: 'list_orders',
+      error: new Error('upstream down'),
+      durationMs: 19,
+    });
+
+    expect(auditLog.record).toHaveBeenCalledTimes(3);
+    expect(auditLog.record.mock.calls.map((c) => c[0].action)).toEqual([
+      'tool.call.started',
+      'tool.call.succeeded',
+      'tool.call.failed',
+    ]);
+    expect(auditLog.record).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        resourceType: 'mcp_tool',
+        resourceId: '11111111-1111-1111-1111-111111111111',
+        userId: 'u1',
+        details: expect.objectContaining({
+          sessionId: 's1',
+          agentId: 'a1',
+          toolName: 'list_orders',
+          argumentsHash: expect.any(String),
+          argumentsPreview: { customerId: 'c1', token: '****' },
+        }),
+      }),
+    );
+    expect(auditLog.record).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        details: expect.objectContaining({
+          status: 'succeeded',
+          durationMs: 17,
+          resultHash: expect.any(String),
+          resultPreview: { ok: true, password: '****' },
+        }),
+      }),
+    );
+    expect(auditLog.record).toHaveBeenNthCalledWith(
+      3,
+      expect.objectContaining({
+        details: expect.objectContaining({
+          status: 'failed',
+          durationMs: 19,
+          error: 'upstream down',
+        }),
+      }),
+    );
   });
 });

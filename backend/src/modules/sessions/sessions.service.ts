@@ -16,6 +16,8 @@ import { createReActAgentInstance } from '../agent-network/agents/react.agent';
 import { SessionStreamBroker } from './session-stream.broker';
 import { ExecutionContextManager } from './execution-context.manager';
 import { LangfuseService } from '../observability/langfuse.service';
+import { AuditLogService } from '../observability/audit-log.service';
+import { hashForAudit, sanitizeForAudit } from '../observability/audit-log.utils';
 import type { McpTool } from '@prisma/client';
 import type { Client } from '@modelcontextprotocol/sdk/client/index.js';
 
@@ -37,6 +39,7 @@ export class SessionsService {
     private readonly broker: SessionStreamBroker,
     private readonly contexts: ExecutionContextManager,
     private readonly langfuse: LangfuseService,
+    private readonly auditLog?: AuditLogService,
   ) {}
 
   async createSession(dto: CreateSessionDto) {
@@ -146,8 +149,10 @@ export class SessionsService {
       // 2. Build agent tools from MCP bindings
       const { mastraTools, allowedToolIds } = await this.buildAgentTools(
         session.agent.id,
+        session.userId,
         sessionId,
         context.id,
+        traceId,
         trace,
       );
 
@@ -258,8 +263,10 @@ export class SessionsService {
 
   private async buildAgentTools(
     agentId: string,
+    userId: string,
     sessionId: string,
     contextId: string,
+    traceId: string,
     trace: any,
   ): Promise<{ mastraTools: Record<string, any>; allowedToolIds: string[] }> {
     const bindings = (await this.prisma.agentMcpBinding.findMany({
@@ -322,12 +329,37 @@ export class SessionsService {
           {
             onBefore: async ({ toolName, args }) => {
               await this.contexts.recordToolCall(contextId, t.toolId, toolName);
+              await this.recordToolAudit({
+                action: 'tool.call.started',
+                userId,
+                traceId,
+                sessionId,
+                agentId,
+                mcpServerId: serverId,
+                mcpToolId: t.toolId,
+                toolName,
+                status: 'started',
+                args,
+              });
               this.broker.emit(sessionId, {
                 type: 'tool_call',
                 data: { toolName, arguments: args, mcpServerId: serverId },
               });
             },
             onSuccess: async ({ toolName, result, durationMs }) => {
+              await this.recordToolAudit({
+                action: 'tool.call.succeeded',
+                userId,
+                traceId,
+                sessionId,
+                agentId,
+                mcpServerId: serverId,
+                mcpToolId: t.toolId,
+                toolName,
+                status: 'succeeded',
+                result,
+                durationMs,
+              });
               this.broker.emit(sessionId, {
                 type: 'tool_result',
                 data: { toolName, result, durationMs },
@@ -342,6 +374,19 @@ export class SessionsService {
                 .end();
             },
             onError: async ({ toolName, error, durationMs }) => {
+              await this.recordToolAudit({
+                action: 'tool.call.failed',
+                userId,
+                traceId,
+                sessionId,
+                agentId,
+                mcpServerId: serverId,
+                mcpToolId: t.toolId,
+                toolName,
+                status: 'failed',
+                durationMs,
+                error: error.message,
+              });
               this.broker.emit(sessionId, {
                 type: 'tool_error',
                 data: { toolName, message: error.message, durationMs },
@@ -360,6 +405,55 @@ export class SessionsService {
       }
     }
     return { mastraTools, allowedToolIds };
+  }
+
+  private async recordToolAudit(input: {
+    action: 'tool.call.started' | 'tool.call.succeeded' | 'tool.call.failed';
+    userId: string;
+    traceId: string;
+    sessionId: string;
+    agentId: string;
+    mcpServerId: string;
+    mcpToolId: string;
+    toolName: string;
+    status: 'started' | 'succeeded' | 'failed';
+    args?: unknown;
+    result?: unknown;
+    durationMs?: number;
+    error?: string;
+  }) {
+    if (!this.auditLog) return;
+    const details: Record<string, unknown> = {
+      sessionId: input.sessionId,
+      agentId: input.agentId,
+      mcpServerId: input.mcpServerId,
+      mcpToolId: input.mcpToolId,
+      toolName: input.toolName,
+      status: input.status,
+      durationMs: input.durationMs ?? null,
+      error: input.error ?? null,
+    };
+    if (input.args !== undefined) {
+      details.argumentsHash = hashForAudit(input.args);
+      details.argumentsPreview = sanitizeForAudit(input.args);
+    }
+    if (input.result !== undefined) {
+      details.resultHash = hashForAudit(input.result);
+      details.resultPreview = sanitizeForAudit(input.result);
+    }
+
+    try {
+      await this.auditLog.record({
+        action: input.action,
+        resourceType: 'mcp_tool',
+        resourceId: input.mcpToolId,
+        traceId: input.traceId,
+        userId: input.userId,
+        details,
+      });
+    } catch (err) {
+      this.logger.debug(`Tool audit log failed: ${(err as Error).message}`);
+    }
   }
 
   // ============================================================
