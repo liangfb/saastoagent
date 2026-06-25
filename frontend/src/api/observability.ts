@@ -1,9 +1,26 @@
 import apiClient from './client';
 import type { LogEntry, Trace, PaginatedData, PaginationParams } from '@/types/api';
 
+export interface LogQueryParams extends PaginationParams {
+  action?: string;
+  resourceType?: string;
+  resourceId?: string;
+  traceId?: string;
+  userId?: string;
+  status?: string;
+  toolName?: string;
+  riskLevel?: string;
+  from?: string;
+  to?: string;
+}
+
 export const logsApi = {
-  list: (params?: PaginationParams & { level?: string; service?: string }) =>
+  list: (params?: LogQueryParams) =>
     apiClient.get<PaginatedData<LogEntry>>('/logs', { params }),
+  streamUrl: () => {
+    const base = import.meta.env.VITE_API_BASE_URL || '/api/v1';
+    return `${base}/logs/stream`;
+  },
 };
 
 export const tracesApi = {

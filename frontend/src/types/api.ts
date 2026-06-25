@@ -159,6 +159,13 @@ export interface LogEntry {
   level: string;
   service: string;
   message: string;
+  action?: string;
+  resourceType?: string | null;
+  resourceId?: string | null;
+  userId?: string | null;
   traceId: string | null;
+  status?: string | null;
+  toolName?: string | null;
+  details?: Record<string, unknown> | null;
   timestamp: string;
 }
