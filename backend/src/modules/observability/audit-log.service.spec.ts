@@ -43,4 +43,41 @@ describe('AuditLogService', () => {
 
     expect(create.mock.calls[0][0].data.traceId).toEqual(expect.any(String));
   });
+
+  it('emits a realtime audit event after the row is created', async () => {
+    const createdAt = new Date('2026-06-25T00:00:00.000Z');
+    const create = jest.fn().mockResolvedValue({
+      id: 7n,
+      traceId: 'trace-1',
+      userId: null,
+      action: 'tool.call.succeeded',
+      resourceType: 'mcp_tool',
+      resourceId: '11111111-1111-1111-1111-111111111111',
+      details: { status: 'succeeded' },
+      ipAddress: null,
+      createdAt,
+    });
+    const broker = { emit: jest.fn() };
+    const service = new AuditLogService({ auditLog: { create } } as any, broker as any);
+
+    await service.record({
+      action: 'tool.call.succeeded',
+      resourceType: 'mcp_tool',
+      resourceId: '11111111-1111-1111-1111-111111111111',
+      traceId: 'trace-1',
+      details: { status: 'succeeded' },
+    });
+
+    expect(broker.emit).toHaveBeenCalledWith({
+      id: '7',
+      traceId: 'trace-1',
+      userId: null,
+      action: 'tool.call.succeeded',
+      resourceType: 'mcp_tool',
+      resourceId: '11111111-1111-1111-1111-111111111111',
+      details: { status: 'succeeded' },
+      ipAddress: null,
+      createdAt: createdAt.toISOString(),
+    });
+  });
 });

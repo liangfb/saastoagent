@@ -1,6 +1,6 @@
 import { Controller, Get, Post, Param, Body, Query, Sse } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
-import { Observable } from 'rxjs';
+import { Observable, map } from 'rxjs';
 import { ObservabilityService } from './observability.service';
 
 @ApiTags('Logs')
@@ -18,8 +18,15 @@ export class LogsController {
   @Sse('stream')
   @ApiOperation({ summary: 'Real-time log stream (SSE)' })
   stream(): Observable<MessageEvent> {
-    // Phase 3: SSE log stream implementation
-    return new Observable();
+    return this.service.streamLogs().pipe(
+      map(
+        (event) =>
+          ({
+            type: event.type,
+            data: event.data,
+          }) as unknown as MessageEvent,
+      ),
+    );
   }
 }
 
