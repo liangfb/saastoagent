@@ -42,6 +42,9 @@ jest.mock('langfuse', () => {
 import { SessionsService } from './sessions.service';
 import { SessionStreamBroker } from './session-stream.broker';
 import { ExecutionContextManager } from './execution-context.manager';
+import { AuditLogService } from '../observability/audit-log.service';
+import { ObservabilityService } from '../observability/observability.service';
+import { createReActAgentInstance } from '../agent-network/agents/react.agent';
 
 function makePrismaMock() {
   return {
@@ -340,6 +343,151 @@ describe('SessionsService.sendMessage', () => {
           durationMs: 19,
           error: 'upstream down',
         }),
+      }),
+    );
+  });
+
+  it('records queryable audit logs during an agent conversation that invokes a tool', async () => {
+    const auditRows: any[] = [];
+    (prisma as any).auditLog = {
+      create: jest.fn(async ({ data }) => {
+        const row = {
+          id: BigInt(auditRows.length + 1),
+          createdAt: new Date(`2026-06-26T00:00:0${auditRows.length}.000Z`),
+          ...data,
+        };
+        auditRows.push(row);
+        return row;
+      }),
+      findMany: jest.fn(async ({ where, orderBy }) => {
+        let rows = [...auditRows];
+        if (where?.traceId) rows = rows.filter((row) => row.traceId === where.traceId);
+        if (where?.resourceType) {
+          rows = rows.filter((row) => row.resourceType === where.resourceType);
+        }
+        if (Array.isArray(where?.AND)) {
+          for (const filter of where.AND) {
+            const path = filter.details?.path?.[0];
+            const expected = filter.details?.equals;
+            if (path) rows = rows.filter((row) => row.details?.[path] === expected);
+          }
+        }
+        if (orderBy?.createdAt === 'desc') {
+          rows.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+        }
+        return rows;
+      }),
+      count: jest.fn(async ({ where }) => {
+        const rows = await (prisma as any).auditLog.findMany({ where });
+        return rows.length;
+      }),
+    };
+
+    const realAuditLog = new AuditLogService(prisma as any);
+    const logs = new ObservabilityService(
+      prisma as any,
+      { listTraces: jest.fn(), getTrace: jest.fn() } as any,
+    );
+    svc = new SessionsService(
+      prisma as any,
+      mcpClient as any,
+      registrar as any,
+      mastra as any,
+      memory as any,
+      broker,
+      contexts,
+      langfuse as any,
+      realAuditLog,
+    );
+
+    registrar.toMastraTool.mockImplementation((_client, _tool, hooks) => ({
+      execute: async (args: Record<string, unknown>) => {
+        await hooks.onBefore({ toolName: 'list_orders', args });
+        const result = { orders: [{ id: 'SO-1', password: 'secret-password' }] };
+        await hooks.onSuccess({ toolName: 'list_orders', result, durationMs: 23 });
+        return result;
+      },
+    }));
+    prisma.agentMcpBinding.findMany.mockResolvedValue([
+      {
+        id: 'binding-1',
+        mcpTool: {
+          id: '11111111-1111-1111-1111-111111111111',
+          mcpServerId: '22222222-2222-2222-2222-222222222222',
+          toolName: 'list_orders',
+          toolDescription: 'List orders',
+          inputSchema: { type: 'object' },
+          mcpServer: {
+            serverConfig: { endpointUrl: 'http://mcp-server/mcp' },
+          },
+        },
+      },
+    ]);
+    prisma.session.findUnique.mockResolvedValue({
+      id: 's1',
+      userId: 'u1',
+      agent: {
+        id: 'a1',
+        name: 'Sales',
+        agentType: 'specialist',
+        systemPrompt: 'Use tools when needed.',
+        llmConfig: { provider: 'anthropic', modelId: 'claude-sonnet' },
+      },
+    });
+    reactAgent.generateLegacy.mockImplementation(async () => {
+      const tools = (createReActAgentInstance as jest.Mock).mock.calls.at(-1)[3];
+      await tools.list_orders.execute({ customerId: 'c1', token: 'secret-token' });
+      return {
+        text: 'I found order SO-1.',
+        toolCalls: [{ toolName: 'list_orders' }],
+        usage: { total: 42 },
+      };
+    });
+
+    const result = await svc.sendMessage('s1', { content: 'show orders for customer c1' }, 'u1');
+    expect(result.content).toBe('I found order SO-1.');
+
+    const started = await logs.findAllLogs({
+      traceId: auditRows[0].traceId,
+      resourceType: 'mcp_tool',
+      status: 'started',
+      toolName: 'list_orders',
+    });
+    const succeeded = await logs.findAllLogs({
+      traceId: auditRows[0].traceId,
+      resourceType: 'mcp_tool',
+      status: 'succeeded',
+      toolName: 'list_orders',
+    });
+
+    expect(started.total).toBe(1);
+    expect(started.items[0]).toEqual(
+      expect.objectContaining({
+        action: 'tool.call.started',
+        resourceType: 'mcp_tool',
+        resourceId: '11111111-1111-1111-1111-111111111111',
+        userId: 'u1',
+        status: 'started',
+        toolName: 'list_orders',
+      }),
+    );
+    expect(started.items[0].details).toEqual(
+      expect.objectContaining({
+        sessionId: 's1',
+        agentId: 'a1',
+        mcpServerId: '22222222-2222-2222-2222-222222222222',
+        mcpToolId: '11111111-1111-1111-1111-111111111111',
+        argumentsHash: expect.any(String),
+        argumentsPreview: { customerId: 'c1', token: '****' },
+      }),
+    );
+    expect(succeeded.total).toBe(1);
+    expect(succeeded.items[0].details).toEqual(
+      expect.objectContaining({
+        status: 'succeeded',
+        durationMs: 23,
+        resultHash: expect.any(String),
+        resultPreview: { orders: [{ id: 'SO-1', password: '****' }] },
       }),
     );
   });
