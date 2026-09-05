@@ -11,6 +11,7 @@ import { ObservabilityModule } from './modules/observability/observability.modul
 import { SessionsModule } from './modules/sessions/sessions.module';
 import { LlmConfigModule } from './modules/llm-config/llm-config.module';
 import { AsyncTasksModule } from './modules/async-tasks/async-tasks.module';
+import { PoliciesModule } from './modules/policies/policies.module';
 
 @Module({
   imports: [
@@ -24,6 +25,7 @@ import { AsyncTasksModule } from './modules/async-tasks/async-tasks.module';
     SessionsModule,
     LlmConfigModule,
     AsyncTasksModule,
+    PoliciesModule,
   ],
   providers: [
     // Authenticate every route by default; opt out with @Public().

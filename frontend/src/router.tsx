@@ -8,6 +8,7 @@ import { AgentsPage } from '@/pages/agents';
 import { ModelsPage } from '@/pages/models';
 import { PlaygroundPage } from '@/pages/playground';
 import { LogsPage } from '@/pages/logs';
+import { PoliciesPage } from '@/pages/policies';
 
 export const router = createBrowserRouter([
   { path: '/login', element: <LoginPage /> },
@@ -29,6 +30,7 @@ export const router = createBrowserRouter([
           { path: 'agents', element: <AgentsPage /> },
           { path: 'models', element: <ModelsPage /> },
           { path: 'logs', element: <LogsPage /> },
+          { path: 'policies', element: <PoliciesPage /> },
         ],
       },
     ],

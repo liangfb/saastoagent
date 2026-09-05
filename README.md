@@ -4,22 +4,16 @@ Turn existing SaaS / enterprise **OpenAPI (REST) endpoints into AI‑Agent‑cal
 
 Upload (or paste) an OpenAPI/Swagger spec; the platform parses it, semantically enriches each endpoint, generates an **MCP Server** that runs as its own container, and lets a single **ReAct Agent** plan and call those tools end‑to‑end from a chat Playground.
 
-> **Status:** developer platform / reference implementation. The core pipeline (OpenAPI → semantic enhancement → MCP runtime → Agent) works end‑to‑end. Enterprise governance (OBO identity, CAEP, fine‑grained RBAC, encryption‑at‑rest) is on the roadmap, not shipped — see [Security](#security).
-
 ## What it does (core)
 
 1. **OpenAPI ingestion** — import a spec by URL or by pasting JSON/YAML (for auth‑gated or disabled doc endpoints).
 2. **Semantic enhancement** — an LLM rewrites terse API metadata into Agent‑friendly tool descriptions.
 3. **Dynamic MCP runtime** — each source is deployed as an independent MCP Server (K8s pod) that proxies calls to the upstream API, injecting the configured credential (API key / Bearer / OAuth).
-4. **Agent Playground** — a single ReAct Agent, bound to a chosen tool set, plans and invokes tools; full execution traces stream live.
-5. **Identity & memory** — platform login (JWT), per‑user long‑term memory via mem0, and managed upstream API credentials.
-
-### Not yet implemented
-
-As a reference implementation, a few observability surfaces are stubbed:
-
-- **Live log streaming** (`GET /api/v1/logs/stream`, SSE) returns an empty stream — log *listing* and *filtering* work; only the realtime push is a stub.
-- **Trace annotation** (`POST /api/v1/traces/:id/annotate`) returns a "pending" error — Agent traces are still recorded/queried via Langfuse.
+4. **Per-tool MCP exposure** — enable only the tools that each MCP Server should publish, then apply the updated runtime configuration without regenerating the source.
+5. **Agent Playground** — a single ReAct Agent, bound to a chosen tool set, plans and invokes tools end-to-end from natural-language requests.
+6. **Identity & memory** — platform login (JWT), per-user long-term memory via mem0, and managed upstream API credentials.
+7. **Observability & audit** — tool calls, platform changes, and policy decisions are recorded with trace correlation; logs support filtering, detail inspection, and live SSE updates.
+8. **Tool policies** — deterministic pre-tool and post-tool rules allow or deny MCP calls and results for selected MCP tools, with deny precedence and audited decisions. See [`spec/policies.md`](./spec/policies.md).
 
 ## Architecture
 
@@ -93,8 +87,6 @@ NestJS 11 · React 19 · Mastra + Vercel AI SDK · Prisma + PostgreSQL · Redis 
 This is a single‑tenant reference implementation. Before any production / public deployment:
 
 - **Rotate all credentials** and use a managed secret store (see `infra/k8s/02-secrets.yaml.example`).
-- Auth is JWT‑based with a global guard; **RBAC, multi‑tenant scoping, and OIDC are not yet implemented**.
-- Upstream API credentials are stored **plaintext** in the DB in MVP (encryption‑at‑rest is roadmap).
 
 Report vulnerabilities per [SECURITY.md](./SECURITY.md).
 

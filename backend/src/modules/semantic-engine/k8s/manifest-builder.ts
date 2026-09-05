@@ -1,4 +1,5 @@
 import type { V1ConfigMap, V1Deployment, V1Secret, V1Service } from '@kubernetes/client-node';
+import { createHash } from 'crypto';
 import { mcpServerLabels } from './labels';
 
 export interface ToolManifest {
@@ -36,6 +37,22 @@ export interface ManifestInputs {
 const CONFIG_MOUNT_PATH = '/etc/mcp';
 const CONTAINER_PORT = 8080;
 
+function runtimeConfig(inp: ManifestInputs) {
+  return {
+    serverId: inp.mcpServerId,
+    serverName: inp.serverName,
+    upstreamBaseUrl: inp.upstreamBaseUrl,
+    tools: inp.tools,
+  };
+}
+
+function configHash(inp: ManifestInputs) {
+  return createHash('sha256')
+    .update(JSON.stringify(runtimeConfig(inp)))
+    .digest('hex')
+    .slice(0, 16);
+}
+
 function labels(inp: ManifestInputs) {
   return mcpServerLabels({
     mcpServerId: inp.mcpServerId,
@@ -53,16 +70,7 @@ export function buildConfigMap(inp: ManifestInputs): V1ConfigMap {
       labels: labels(inp),
     },
     data: {
-      'config.json': JSON.stringify(
-        {
-          serverId: inp.mcpServerId,
-          serverName: inp.serverName,
-          upstreamBaseUrl: inp.upstreamBaseUrl,
-          tools: inp.tools,
-        },
-        null,
-        2,
-      ),
+      'config.json': JSON.stringify(runtimeConfig(inp), null, 2),
     },
   };
 }
@@ -127,7 +135,12 @@ export function buildDeployment(inp: ManifestInputs): V1Deployment {
         },
       },
       template: {
-        metadata: { labels: labels(inp) },
+        metadata: {
+          labels: labels(inp),
+          annotations: {
+            'agentic-mesh/config-hash': configHash(inp),
+          },
+        },
         spec: {
           serviceAccountName: 'default',
           containers: [

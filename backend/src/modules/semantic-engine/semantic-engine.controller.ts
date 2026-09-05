@@ -13,6 +13,7 @@ import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { SemanticEngineService } from './semantic-engine.service';
 import { ZodValidationPipe } from '../../core/pipes/zod-validation.pipe';
 import { createOpenapiSourceSchema, updateOpenapiSourceSchema } from './dto/openapi-source.dto';
+import { updateMcpToolEnabledSchema } from './dto/mcp-server.dto';
 
 @ApiTags('OpenAPI Sources')
 @ApiBearerAuth()
@@ -161,5 +162,14 @@ export class McpServerController {
   @ApiOperation({ summary: 'List MCP tools' })
   getTools(@Param('id', ParseUUIDPipe) id: string) {
     return this.service.getMcpServerTools(id);
+  }
+
+  @Put(':id/tools/enabled')
+  @ApiOperation({ summary: 'Enable or disable MCP tools exposed by this server' })
+  updateToolsEnabled(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(new ZodValidationPipe(updateMcpToolEnabledSchema)) dto: any,
+  ) {
+    return this.service.updateMcpServerToolsEnabled(id, dto);
   }
 }

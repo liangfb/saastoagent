@@ -128,6 +128,7 @@ export class McpGenerateProcessor extends WorkerHost {
             toolDescription: description,
             inputSchema: inputSchema as Prisma.InputJsonValue,
             outputSchema: (endpoint.responseSchema ?? null) as Prisma.InputJsonValue,
+            enabledInMcp: true,
           },
         });
         toolCount++;
@@ -170,6 +171,7 @@ export class McpGenerateProcessor extends WorkerHost {
               k8s: deployResult.k8s,
               toolCount,
               lastDeployedAt: new Date().toISOString(),
+              toolsConfigDirty: false,
             } as Prisma.InputJsonValue,
           },
         });
@@ -291,5 +293,4 @@ export class McpGenerateProcessor extends WorkerHost {
       return null;
     }
   }
-
 }

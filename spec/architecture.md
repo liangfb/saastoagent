@@ -11,18 +11,19 @@
 
 ## Backend Module Structure (`backend/src/modules/`)
 
-Four NestJS business modules following Module + Controller + Service + Repository pattern:
+NestJS business modules follow the Module + Controller + Service pattern:
 
 - **semantic-engine** — OpenAPI upload → parse → LLM semantic enhancement → MCP Server generation. Uses 3 BullMQ processors (`openapi-parse`, `semantic-enhance`, `mcp-generate`) for async pipeline. `k8s/` sub-package (`K8sService`, `ManifestBuilder`, `McpServerDeployer`, `labels.ts`, `slug.ts`) provisions per-source MCP Server Deployments on EKS via `@kubernetes/client-node`.
 - **agent-network** — Router Agent (intent classification + routing) → Specialist Agent (multi-step tool execution). Memory via mem0 REST API with user/agent/session levels. `mcp-client/` sub-package (`McpClientService`, `McpToolRegistrar`, `mcp-client.factory.ts`) connects Specialist Agent to containerized MCP Servers via `@modelcontextprotocol/sdk` Streamable HTTP and exposes each remote tool as a Mastra `createTool`. Per-session client cache with 10-min TTL.
 - **identity-security** — OAuth 2.1 + JWT authentication, credential storage, execution context. `credential-sync.service.ts` + `credential-sync.processor.ts` propagate credential updates to K8s Secrets and trigger MCP Server rollout. `oauth-refresh.scheduler.ts` + `oauth-refresh.processor.ts` run a 5-minute repeatable BullMQ job that refreshes OAuth2 tokens approaching expiry.
 - **observability** — Langfuse integration for LLM execution tracing.
+- **policies** — Policy CRUD, restricted JSON rule evaluation, and pre-tool/post-tool enforcement decision logging.
 
-Supporting modules: `sessions` (playground SSE), `llm-config` (multi-provider model management), `async-tasks` (job tracking).
+Supporting modules: `sessions` (playground SSE and policy enforcement integration), `llm-config` (multi-provider model management), `async-tasks` (job tracking).
 
 ## Core Infrastructure (`backend/src/core/`)
 
-- `PrismaModule` — DB connection (schema at `backend/prisma/schema.prisma`, 18 models)
+- `PrismaModule` — DB connection (schema at `backend/prisma/schema.prisma`, 19 models)
 - `RedisModule` — Cache + BullMQ queue broker
 - `ConfigModule` — Zod-validated env vars (`core/config/app.config.ts`), fails fast on invalid config
 - `LoggerModule` — Pino structured JSON logging with sensitive field redaction

@@ -33,18 +33,21 @@ interface ServiceOpts {
   openapiSource?: any;
   deployResult?: { endpointUrl: string; k8s: any; slug: string };
   deployRejects?: Error;
+  serverTools?: any[];
 }
 
 function makeService(opts: ServiceOpts = {}) {
-  const server = opts.serverFound === false
-    ? null
-    : {
-        id: ID,
-        name: 'finance_mcp',
-        openapiSourceId: SOURCE_ID,
-        status: 'stopped',
-        serverConfig: opts.serverConfig ?? { k8s: { deployment: SLUG } },
-      };
+  const server =
+    opts.serverFound === false
+      ? null
+      : {
+          id: ID,
+          name: 'finance_mcp',
+          openapiSourceId: SOURCE_ID,
+          status: 'stopped',
+          serverConfig: opts.serverConfig ?? { k8s: { deployment: SLUG } },
+          tools: opts.serverTools ?? [{ id: 'tool-1', enabledInMcp: true }],
+        };
 
   // Per-call findUniqueOrThrow result for the deploy path.
   const fullServer = {
@@ -59,6 +62,7 @@ function makeService(opts: ServiceOpts = {}) {
       {
         toolName: 'list_accounts',
         toolDescription: 'List accounts',
+        enabledInMcp: true,
         inputSchema: { type: 'object', properties: {} },
         outputSchema: null,
         endpoint: {
@@ -72,10 +76,15 @@ function makeService(opts: ServiceOpts = {}) {
   };
 
   const prisma = {
+    $transaction: jest.fn(async (operations) => Promise.all(operations)),
     mcpServer: {
       findUnique: jest.fn().mockResolvedValue(server),
       findUniqueOrThrow: jest.fn().mockResolvedValue(fullServer),
       update: jest.fn().mockResolvedValue(server),
+    },
+    mcpTool: {
+      update: jest.fn(async ({ where, data }) => ({ id: where.id, ...data })),
+      findMany: jest.fn().mockResolvedValue(opts.serverTools ?? server?.tools ?? []),
     },
     credential: {
       findUnique: jest.fn().mockResolvedValue(null),
@@ -187,6 +196,66 @@ describe('SemanticEngineService.startMcpServer — deploy path (no deployment ye
     expect(deployer.scale).not.toHaveBeenCalled();
   });
 
+  it('redeploys instead of scaling when tool configuration is dirty', async () => {
+    const { svc, deployer } = makeService({
+      serverConfig: { k8s: { deployment: SLUG }, toolsConfigDirty: true },
+    });
+    const result = await svc.startMcpServer(ID);
+    expect(result.started).toBe(true);
+    expect((result as any).deployed).toBe(true);
+    expect(deployer.deploy).toHaveBeenCalledTimes(1);
+    expect(deployer.scale).not.toHaveBeenCalled();
+  });
+
+  it('deploys only tools enabled in MCP', async () => {
+    const { svc, deployer, prisma } = makeService({
+      exists: false,
+      tools: [
+        {
+          toolName: 'enabled_tool',
+          toolDescription: 'Enabled',
+          enabledInMcp: true,
+          inputSchema: { type: 'object', properties: {} },
+          outputSchema: null,
+          endpoint: {
+            httpMethod: 'GET',
+            path: '/enabled',
+            requestSchema: null,
+            parameters: [],
+          },
+        },
+        {
+          toolName: 'disabled_tool',
+          toolDescription: 'Disabled',
+          enabledInMcp: false,
+          inputSchema: { type: 'object', properties: {} },
+          outputSchema: null,
+          endpoint: {
+            httpMethod: 'GET',
+            path: '/disabled',
+            requestSchema: null,
+            parameters: [],
+          },
+        },
+      ],
+    });
+    await svc.startMcpServer(ID);
+    expect(deployer.deploy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tools: [expect.objectContaining({ toolName: 'enabled_tool' })],
+      }),
+    );
+    expect(prisma.mcpServer.update).toHaveBeenLastCalledWith({
+      where: { id: ID },
+      data: expect.objectContaining({
+        serverConfig: expect.objectContaining({
+          toolCount: 1,
+          toolsConfigDirty: false,
+        }),
+      }),
+    });
+  });
+
   it('marks server failed when deploy throws', async () => {
     const { svc, prisma } = makeService({
       exists: false,
@@ -215,6 +284,51 @@ describe('SemanticEngineService.startMcpServer — deploy path (no deployment ye
       },
     });
     await expect(svc.startMcpServer(ID)).rejects.toThrow(/upstream base url/i);
+  });
+});
+
+describe('SemanticEngineService.updateMcpServerToolsEnabled', () => {
+  it('updates tool enabled flags and marks stopped runtime config dirty', async () => {
+    const { svc, prisma, deployer } = makeService({
+      serverConfig: { k8s: { deployment: SLUG }, toolCount: 2 },
+      serverTools: [
+        { id: 'tool-1', enabledInMcp: true },
+        { id: 'tool-2', enabledInMcp: false },
+      ],
+    });
+
+    const result = await svc.updateMcpServerToolsEnabled(ID, {
+      tools: [{ id: 'tool-1', enabledInMcp: false }],
+      apply: true,
+    });
+
+    expect(result).toEqual(
+      expect.objectContaining({ updated: true, applied: false, enabledToolCount: 1 }),
+    );
+    expect(prisma.mcpTool.update).toHaveBeenCalledWith({
+      where: { id: 'tool-1' },
+      data: { enabledInMcp: false },
+    });
+    expect(prisma.mcpServer.update).toHaveBeenLastCalledWith({
+      where: { id: ID },
+      data: expect.objectContaining({
+        serverConfig: expect.objectContaining({
+          toolCount: 1,
+          toolsConfigDirty: true,
+        }),
+      }),
+    });
+    expect(deployer.deploy).not.toHaveBeenCalled();
+  });
+
+  it('rejects tool ids from another MCP server', async () => {
+    const { svc } = makeService({ serverTools: [{ id: 'tool-1', enabledInMcp: true }] });
+    await expect(
+      svc.updateMcpServerToolsEnabled(ID, {
+        tools: [{ id: 'other-tool', enabledInMcp: false }],
+        apply: true,
+      }),
+    ).rejects.toThrow(/do not belong/i);
   });
 });
 
@@ -260,9 +374,7 @@ describe('SemanticEngineService.stopMcpServer', () => {
       namespace: expect.any(String),
       replicas: 0,
     });
-    expect(deployer.waitForScale).toHaveBeenCalledWith(
-      expect.objectContaining({ expected: 0 }),
-    );
+    expect(deployer.waitForScale).toHaveBeenCalledWith(expect.objectContaining({ expected: 0 }));
     expect(prisma.mcpServer.update).toHaveBeenLastCalledWith({
       where: { id: ID },
       data: { status: 'stopped', errorMessage: null },

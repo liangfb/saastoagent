@@ -1,5 +1,6 @@
 import axios from 'axios';
 import type { ApiResponse } from '@/types/api';
+import { useAuthStore } from '@/stores/auth.store';
 
 const apiClient = axios.create({
   baseURL: import.meta.env.VITE_API_BASE_URL || '/api/v1',
@@ -25,8 +26,7 @@ apiClient.interceptors.response.use(
   },
   (error) => {
     if (error.response?.status === 401) {
-      localStorage.removeItem('auth_token');
-      localStorage.removeItem('auth_user');
+      useAuthStore.getState().logout();
     }
     const msg = error.response?.data?.message || error.message;
     return Promise.reject(new Error(msg));

@@ -169,3 +169,27 @@ export interface LogEntry {
   details?: Record<string, unknown> | null;
   timestamp: string;
 }
+
+export type PolicyPhase = 'pre_tool' | 'post_tool';
+export type PolicyEffect = 'allow' | 'deny';
+
+export interface PolicyRule {
+  id: string;
+  phase: PolicyPhase;
+  effect: PolicyEffect;
+  when: Record<string, unknown>;
+  reason: string;
+}
+
+export interface Policy {
+  id: string;
+  name: string;
+  description: string | null;
+  enabled: boolean;
+  priority: number;
+  version: number;
+  scope: Record<string, unknown>;
+  rules: PolicyRule[];
+  createdAt: string;
+  updatedAt: string;
+}

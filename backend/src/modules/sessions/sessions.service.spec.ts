@@ -100,6 +100,7 @@ describe('SessionsService.sendMessage', () => {
   let mcpClient: { getOrCreate: jest.Mock; closeSession: jest.Mock };
   let registrar: { toMastraTool: jest.Mock };
   let auditLog: { record: jest.Mock };
+  let policyEngine: { evaluate: jest.Mock };
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -128,6 +129,16 @@ describe('SessionsService.sendMessage', () => {
     auditLog = {
       record: jest.fn(async () => undefined),
     };
+    policyEngine = {
+      evaluate: jest.fn(async ({ phase }) => ({
+        effect: 'allow',
+        phase,
+        matchedPolicyIds: [],
+        matchedPolicyVersions: [],
+        matchedRuleIds: [],
+        reason: null,
+      })),
+    };
     svc = new SessionsService(
       prisma as any,
       mcpClient as any,
@@ -137,6 +148,7 @@ describe('SessionsService.sendMessage', () => {
       broker,
       contexts,
       langfuse as any,
+      policyEngine as any,
       auditLog as any,
     );
   });
@@ -166,9 +178,7 @@ describe('SessionsService.sendMessage', () => {
 
     expect(result.content).toBe('hi');
     // user + assistant messages both persisted
-    const createdRoles = prisma.message.create.mock.calls.map(
-      (c: any) => c[0].data.role,
-    );
+    const createdRoles = prisma.message.create.mock.calls.map((c: any) => c[0].data.role);
     expect(createdRoles).toEqual(['user', 'assistant']);
     // execution context lifecycle
     expect(contexts.create).toHaveBeenCalled();
@@ -287,6 +297,11 @@ describe('SessionsService.sendMessage', () => {
 
     await svc.sendMessage('s1', { content: 'hi' }, 'u1');
     expect(hooks).toBeDefined();
+    expect(prisma.agentMcpBinding.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { agentId: 'a1', enabled: true, mcpTool: { enabledInMcp: true } },
+      }),
+    );
 
     await hooks.onBefore({
       toolName: 'list_orders',
@@ -397,6 +412,7 @@ describe('SessionsService.sendMessage', () => {
       broker,
       contexts,
       langfuse as any,
+      policyEngine as any,
       realAuditLog,
     );
 

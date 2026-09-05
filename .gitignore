@@ -63,6 +63,7 @@ tmp/
 *.local
 # Local-only infra (e.g. docker-compose for local dev); not part of the release.
 infra/local/
+misc/
 
 # -----dev-----
 BA/

@@ -8,4 +8,6 @@ export { sessionsApi } from './sessions';
 export { logsApi, tracesApi } from './observability';
 export { tasksApi } from './tasks';
 export { mcpServersApi } from './mcp-servers';
+export { policiesApi } from './policies';
+export type { PolicyPayload } from './policies';
 export type { McpTool } from './mcp-servers';

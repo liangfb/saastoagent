@@ -40,20 +40,21 @@ export class ObservabilityService {
       const status = details?.status ?? null;
       const toolName = details?.toolName ?? null;
       return {
-      id: log.id.toString(),
-      level: status === 'failed' ? 'error' : 'info',
-      service: log.resourceType ?? 'system',
-      message: `${log.action}${log.resourceId ? ` on ${log.resourceType}/${log.resourceId}` : ''}`,
-      action: log.action,
-      resourceType: log.resourceType,
-      resourceId: log.resourceId,
-      userId: log.userId,
-      traceId: log.traceId,
-      status,
-      toolName,
-      details,
-      timestamp: log.createdAt.toISOString(),
-    };
+        id: log.id.toString(),
+        level:
+          status === 'failed' || status === 'denied' || status === 'blocked' ? 'error' : 'info',
+        service: log.resourceType ?? 'system',
+        message: `${log.action}${log.resourceId ? ` on ${log.resourceType}/${log.resourceId}` : ''}`,
+        action: log.action,
+        resourceType: log.resourceType,
+        resourceId: log.resourceId,
+        userId: log.userId,
+        traceId: log.traceId,
+        status,
+        toolName,
+        details,
+        timestamp: log.createdAt.toISOString(),
+      };
     });
     return paginate(mapped, total, pq);
   }

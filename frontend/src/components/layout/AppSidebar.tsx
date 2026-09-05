@@ -1,5 +1,14 @@
 import { NavLink } from 'react-router-dom';
-import { Shield, FileJson, Bot, Cpu, ScrollText, Server, MessageSquare } from 'lucide-react';
+import {
+  Shield,
+  FileJson,
+  Bot,
+  Cpu,
+  ScrollText,
+  Server,
+  MessageSquare,
+  ShieldCheck,
+} from 'lucide-react';
 import {
   Sidebar,
   SidebarContent,
@@ -19,6 +28,7 @@ const navItems = [
   { to: '/mcp-servers', icon: Server, label: 'MCP Servers' },
   { to: '/agents', icon: Bot, label: 'Agents' },
   { to: '/models', icon: Cpu, label: 'Models' },
+  { to: '/policies', icon: ShieldCheck, label: 'Policies' },
   { to: '/logs', icon: ScrollText, label: 'Logs' },
 ];
 
@@ -38,9 +48,7 @@ export function AppSidebar() {
             <SidebarMenu>
               {navItems.map((item) => (
                 <SidebarMenuItem key={item.to}>
-                  <SidebarMenuButton
-                    render={<NavLink to={item.to} end={item.end ?? false} />}
-                  >
+                  <SidebarMenuButton render={<NavLink to={item.to} end={item.end ?? false} />}>
                     <item.icon className="h-4 w-4" />
                     <span>{item.label}</span>
                   </SidebarMenuButton>

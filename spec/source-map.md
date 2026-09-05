@@ -113,6 +113,14 @@ modules/
 │   ├── observability.service.ts    — Log queries, Trace proxy, annotation
 │   └── langfuse.service.ts         — Langfuse REST API: trace creation/query/annotation
 │
+├── policies/
+│   ├── policies.module.ts
+│   ├── policies.controller.ts      — @Controller('policies') CRUD
+│   ├── policies.service.ts         — Policy persistence and change audit
+│   ├── policy-engine.service.ts    — Scope/condition evaluation and decision audit
+│   ├── policy.types.ts             — Restricted JSON DSL and execution fact types
+│   └── dto/policy.dto.ts           — Policy scope/rule validation
+│
 └── async-tasks/
     ├── async-tasks.module.ts
     ├── async-tasks.controller.ts — @Controller('tasks') list/detail/cancel
@@ -133,7 +141,7 @@ router.tsx     — React Router route configuration:
                  / → PlaygroundPage (landing; protected by ProtectedRoute)
                  /playground → redirect to /
                  /identity, /openapi, /openapi/:id, /openapi/:id/edit,
-                 /mcp-servers, /agents, /models, /logs
+                 /mcp-servers, /agents, /models, /policies, /logs
 
 api/
 ├── index.ts            — Barrel re-exports
@@ -146,7 +154,8 @@ api/
 ├── sessions.ts         — sessionsApi: CRUD + sendMessage + SSE stream URL
 ├── llm-configs.ts      — llmConfigsApi + llmAssignmentsApi
 ├── tasks.ts            — tasksApi: list/getById/cancel
-└── observability.ts    — logsApi + tracesApi
+├── observability.ts    — logsApi + tracesApi
+└── policies.ts         — policiesApi CRUD
 
 stores/ (Zustand)
 ├── index.ts            — Barrel re-exports
@@ -172,6 +181,7 @@ pages/
 ├── models/ModelsPage.tsx         — LLM config list + UsageType assignment cards
 ├── playground/PlaygroundPage.tsx — Chat (user-right / AI-left) + large composer + Trace viewer
 ├── logs/LogsPage.tsx             — Log list + filtering
+├── policies/PoliciesPage.tsx      — Policy list + JSON scope/rule editor
 └── home/HomePage.tsx             — ⚠️ legacy/unused (not routed; landing is now PlaygroundPage)
 
 components/

@@ -49,7 +49,8 @@ const emptyForm: FormState = {
 };
 
 export function AgentsPage() {
-  const { items, loading, fetchItems, createItem, updateItem, deleteItem } = useAgentsStore();
+  const { items, loading, fetchItems, createItem, updateItem, deleteItem } =
+    useAgentsStore();
   const [open, setOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -75,7 +76,9 @@ export function AgentsPage() {
         const data = await mcpServersApi.list({ pageSize: 100 });
         if (cancelled) return;
         const items = itemsOf<McpServer>(data);
-        setServers(items.map((server) => ({ server, tools: [], loading: false })));
+        setServers(
+          items.map((server) => ({ server, tools: [], loading: false })),
+        );
       } finally {
         if (!cancelled) setServersLoading(false);
       }
@@ -94,17 +97,29 @@ export function AgentsPage() {
     });
     const entry = servers.find((s) => s.server.id === serverId);
     if (!entry || entry.tools.length > 0 || entry.loading) return;
-    setServers((arr) => arr.map((e) => (e.server.id === serverId ? { ...e, loading: true } : e)));
+    setServers((arr) =>
+      arr.map((e) => (e.server.id === serverId ? { ...e, loading: true } : e)),
+    );
     try {
-      const tools = (await mcpServersApi.getTools(serverId)) as unknown as McpTool[];
+      const tools = (await mcpServersApi.getTools(
+        serverId,
+      )) as unknown as McpTool[];
       setServers((arr) =>
         arr.map((e) =>
-          e.server.id === serverId ? { ...e, tools, loading: false } : e,
+          e.server.id === serverId
+            ? {
+                ...e,
+                tools: tools.filter((tool) => tool.enabledInMcp),
+                loading: false,
+              }
+            : e,
         ),
       );
     } catch {
       setServers((arr) =>
-        arr.map((e) => (e.server.id === serverId ? { ...e, loading: false } : e)),
+        arr.map((e) =>
+          e.server.id === serverId ? { ...e, loading: false } : e,
+        ),
       );
     }
   };
@@ -194,7 +209,12 @@ export function AgentsPage() {
       setOpen(false);
       resetDialog();
     } catch (err) {
-      setError(getErrorMessage(err, `Failed to ${editingId ? 'update' : 'create'} agent`));
+      setError(
+        getErrorMessage(
+          err,
+          `Failed to ${editingId ? 'update' : 'create'} agent`,
+        ),
+      );
     } finally {
       setSubmitting(false);
     }
@@ -213,13 +233,16 @@ export function AgentsPage() {
     { header: 'Name', accessor: 'name' as const },
     {
       header: 'Status',
-      accessor: (row: Agent) => <StatusBadge status={row.isActive ? 'active' : 'inactive'} />,
+      accessor: (row: Agent) => (
+        <StatusBadge status={row.isActive ? 'active' : 'inactive'} />
+      ),
     },
     { header: 'Description', accessor: (row: Agent) => row.description ?? '-' },
     {
       header: 'Tools',
       accessor: (row: Agent) =>
-        (row as Agent & { _count?: { mcpBindings?: number } })._count?.mcpBindings ?? 0,
+        (row as Agent & { _count?: { mcpBindings?: number } })._count
+          ?.mcpBindings ?? 0,
     },
     {
       header: 'Actions',
@@ -229,8 +252,13 @@ export function AgentsPage() {
             <MoreHorizontal className="h-4 w-4" />
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
-            <DropdownMenuItem onClick={() => openEdit(row)}>Edit</DropdownMenuItem>
-            <DropdownMenuItem className="text-destructive" onClick={() => handleDelete(row.id)}>
+            <DropdownMenuItem onClick={() => openEdit(row)}>
+              Edit
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              className="text-destructive"
+              onClick={() => handleDelete(row.id)}
+            >
               Delete
             </DropdownMenuItem>
           </DropdownMenuContent>
@@ -268,9 +296,12 @@ export function AgentsPage() {
         <DialogContent className="sm:max-w-2xl">
           <form onSubmit={handleSubmit}>
             <DialogHeader>
-              <DialogTitle>{editingId ? 'Edit Agent' : 'Add Agent'}</DialogTitle>
+              <DialogTitle>
+                {editingId ? 'Edit Agent' : 'Add Agent'}
+              </DialogTitle>
               <DialogDescription>
-                The agent decides when to call its bound MCP tools and when to respond directly.
+                The agent decides when to call its bound MCP tools and when to
+                respond directly.
               </DialogDescription>
             </DialogHeader>
             <div className="grid gap-4 py-4">
@@ -280,7 +311,9 @@ export function AgentsPage() {
                   id="agent-name"
                   placeholder="e.g. Order Management Agent"
                   value={form.name}
-                  onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, name: e.target.value }))
+                  }
                   required
                 />
               </div>
@@ -290,7 +323,9 @@ export function AgentsPage() {
                   id="agent-desc"
                   placeholder="Brief description of this agent's role"
                   value={form.description}
-                  onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, description: e.target.value }))
+                  }
                 />
               </div>
               <div className="grid gap-2">
@@ -299,7 +334,9 @@ export function AgentsPage() {
                   id="agent-prompt"
                   placeholder="Domain context and rules. ReAct guidance is appended automatically."
                   value={form.systemPrompt}
-                  onChange={(e) => setForm((f) => ({ ...f, systemPrompt: e.target.value }))}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, systemPrompt: e.target.value }))
+                  }
                   rows={3}
                 />
               </div>
@@ -310,7 +347,10 @@ export function AgentsPage() {
                   className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                   value={form.status}
                   onChange={(e) =>
-                    setForm((f) => ({ ...f, status: e.target.value as 'active' | 'inactive' }))
+                    setForm((f) => ({
+                      ...f,
+                      status: e.target.value as 'active' | 'inactive',
+                    }))
                   }
                 >
                   <option value="active">active</option>
@@ -325,8 +365,8 @@ export function AgentsPage() {
                   </span>
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  Pick tools across one or more MCP servers. The agent will be biased toward
-                  these tools first when fulfilling user requests.
+                  Pick tools across one or more MCP servers. The agent will be
+                  biased toward these tools first when fulfilling user requests.
                 </p>
                 <div className="rounded-md border">
                   <ScrollArea className="h-64">
@@ -338,17 +378,22 @@ export function AgentsPage() {
                       )}
                       {!serversLoading && servers.length === 0 && (
                         <p className="px-3 py-4 text-sm text-muted-foreground">
-                          No MCP servers available. Generate one from an API resource first.
+                          No MCP servers available. Generate one from an API
+                          resource first.
                         </p>
                       )}
                       {servers.map((entry) => {
                         const isOpen = expanded.has(entry.server.id);
                         const allSelected =
                           entry.tools.length > 0 &&
-                          entry.tools.every((t) => form.selectedToolIds.has(t.id));
+                          entry.tools.every((t) =>
+                            form.selectedToolIds.has(t.id),
+                          );
                         const someSelected =
                           entry.tools.length > 0 &&
-                          entry.tools.some((t) => form.selectedToolIds.has(t.id));
+                          entry.tools.some((t) =>
+                            form.selectedToolIds.has(t.id),
+                          );
                         return (
                           <div key={entry.server.id} className="rounded-md">
                             <div className="flex items-center gap-2 px-2 py-1.5 hover:bg-accent">
@@ -356,7 +401,9 @@ export function AgentsPage() {
                                 type="button"
                                 onClick={() => toggleExpand(entry.server.id)}
                                 className="inline-flex h-6 w-6 items-center justify-center rounded hover:bg-muted"
-                                aria-label={isOpen ? 'Collapse server' : 'Expand server'}
+                                aria-label={
+                                  isOpen ? 'Collapse server' : 'Expand server'
+                                }
                               >
                                 {isOpen ? (
                                   <ChevronDown className="h-3 w-3" />
@@ -368,11 +415,14 @@ export function AgentsPage() {
                                 type="checkbox"
                                 checked={allSelected}
                                 ref={(el) => {
-                                  if (el) el.indeterminate = !allSelected && someSelected;
+                                  if (el)
+                                    el.indeterminate =
+                                      !allSelected && someSelected;
                                 }}
                                 onChange={() => {
                                   if (!isOpen) toggleExpand(entry.server.id);
-                                  if (entry.tools.length > 0) toggleServerAll(entry);
+                                  if (entry.tools.length > 0)
+                                    toggleServerAll(entry);
                                 }}
                                 disabled={entry.tools.length === 0 && !isOpen}
                                 className="h-4 w-4"
@@ -406,12 +456,16 @@ export function AgentsPage() {
                                   >
                                     <input
                                       type="checkbox"
-                                      checked={form.selectedToolIds.has(tool.id)}
+                                      checked={form.selectedToolIds.has(
+                                        tool.id,
+                                      )}
                                       onChange={() => toggleTool(tool.id)}
                                       className="mt-0.5 h-4 w-4"
                                     />
                                     <div className="flex-1">
-                                      <div className="font-mono text-xs">{tool.toolName}</div>
+                                      <div className="font-mono text-xs">
+                                        {tool.toolName}
+                                      </div>
                                       {tool.toolDescription && (
                                         <div className="text-xs text-muted-foreground line-clamp-2">
                                           {tool.toolDescription}

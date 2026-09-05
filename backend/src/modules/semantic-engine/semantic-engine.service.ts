@@ -11,6 +11,7 @@ import {
   buildPrismaSkipTake,
 } from '../shared/pagination';
 import type { CreateOpenapiSourceDto, UpdateOpenapiSourceDto } from './dto/openapi-source.dto';
+import type { UpdateMcpToolEnabledDto } from './dto/mcp-server.dto';
 import { McpServerDeployer } from './k8s/mcp-server-deployer';
 import type { ToolManifest } from './k8s/manifest-builder';
 import {
@@ -376,11 +377,20 @@ export class SemanticEngineService {
         include: {
           openapiSource: { select: { id: true, name: true } },
           _count: { select: { tools: true } },
+          tools: { select: { enabledInMcp: true } },
         },
       }),
       this.prisma.mcpServer.count({ where }),
     ]);
-    return paginate(items, total, pq);
+    return paginate(
+      items.map((item) => {
+        const { tools, ...rest } = item;
+        const enabledToolCount = tools.filter((tool) => tool.enabledInMcp).length;
+        return { ...rest, enabledToolCount };
+      }),
+      total,
+      pq,
+    );
   }
 
   async findMcpServerById(id: string) {
@@ -401,9 +411,10 @@ export class SemanticEngineService {
 
     const namespace = k8sNamespace();
     const slug = (server.serverConfig as any)?.k8s?.deployment;
+    const toolsConfigDirty = Boolean((server.serverConfig as any)?.toolsConfigDirty);
 
     // Path A: deployment slug already recorded AND alive in cluster → just scale up.
-    if (slug && (await this.deployer.deploymentExists({ slug, namespace }))) {
+    if (slug && !toolsConfigDirty && (await this.deployer.deploymentExists({ slug, namespace }))) {
       return this.scaleUpExisting(id, slug, namespace);
     }
 
@@ -480,6 +491,7 @@ export class SemanticEngineService {
       if (server.tools.length === 0) {
         throw new Error('MCP server has no tools to deploy. Run Regenerate first.');
       }
+      const enabledTools = server.tools.filter((tool) => tool.enabledInMcp);
 
       const upstreamBaseUrl =
         server.openapiSource.baseUrl ??
@@ -489,7 +501,7 @@ export class SemanticEngineService {
         throw new Error('Cannot derive upstream base URL from OpenAPI source.');
       }
 
-      const toolManifests: ToolManifest[] = server.tools.map((t) => {
+      const toolManifests: ToolManifest[] = enabledTools.map((t) => {
         const ep = t.endpoint;
         // Tools without an endpoint backref are unusable at runtime — fail loud.
         if (!ep) {
@@ -542,6 +554,7 @@ export class SemanticEngineService {
             k8s: deployResult.k8s,
             toolCount: toolManifests.length,
             lastDeployedAt: new Date().toISOString(),
+            toolsConfigDirty: false,
           } as Prisma.InputJsonValue,
         },
       });
@@ -549,6 +562,7 @@ export class SemanticEngineService {
         mode: 'deploy',
         endpointUrl: deployResult.endpointUrl,
         namespace,
+        enabledToolCount: toolManifests.length,
       });
 
       return { started: true, deployed: true, endpointUrl: deployResult.endpointUrl };
@@ -633,7 +647,8 @@ export class SemanticEngineService {
       | 'mcp.generate.queued'
       | 'mcp.server.started'
       | 'mcp.server.stopped'
-      | 'mcp.server.failed',
+      | 'mcp.server.failed'
+      | 'mcp.tools.enabled.updated',
     resourceType: 'openapi_source' | 'mcp_server',
     resourceId: string,
     details: Record<string, unknown>,
@@ -663,5 +678,65 @@ export class SemanticEngineService {
       where: { mcpServerId: id },
       orderBy: { toolName: 'asc' },
     });
+  }
+
+  async updateMcpServerToolsEnabled(id: string, dto: UpdateMcpToolEnabledDto) {
+    const server = await this.prisma.mcpServer.findUnique({
+      where: { id },
+      include: { tools: { select: { id: true, enabledInMcp: true } } },
+    });
+    if (!server) throw new NotFoundException(`MCP Server ${id} not found`);
+
+    const knownToolIds = new Set(server.tools.map((tool) => tool.id));
+    const invalidToolIds = dto.tools
+      .map((tool) => tool.id)
+      .filter((toolId) => !knownToolIds.has(toolId));
+    if (invalidToolIds.length > 0) {
+      throw new BadRequestException('One or more tools do not belong to this MCP server');
+    }
+
+    await this.prisma.$transaction(
+      dto.tools.map((tool) =>
+        this.prisma.mcpTool.update({
+          where: { id: tool.id },
+          data: { enabledInMcp: tool.enabledInMcp },
+        }),
+      ),
+    );
+
+    const tools = await this.prisma.mcpTool.findMany({
+      where: { mcpServerId: id },
+      orderBy: { toolName: 'asc' },
+    });
+    const enabledToolCount = tools.filter((tool) => tool.enabledInMcp).length;
+
+    await this.prisma.mcpServer.update({
+      where: { id },
+      data: {
+        serverConfig: {
+          ...((server.serverConfig as Record<string, unknown> | null) ?? {}),
+          toolCount: enabledToolCount,
+          lastToolEnabledUpdateAt: new Date().toISOString(),
+          toolsConfigDirty: true,
+        } as Prisma.InputJsonValue,
+      },
+    });
+
+    await this.recordAudit('mcp.tools.enabled.updated', 'mcp_server', id, {
+      changedToolCount: dto.tools.length,
+      enabledToolCount,
+      apply: dto.apply,
+    });
+
+    if (dto.apply && server.status === 'running') {
+      await this.deployFromDb(id, k8sNamespace());
+    }
+
+    return {
+      updated: true,
+      applied: Boolean(dto.apply && server.status === 'running'),
+      enabledToolCount,
+      tools,
+    };
   }
 }

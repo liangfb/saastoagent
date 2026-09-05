@@ -1,0 +1,137 @@
+<mxfile host="app.diagrams.net" agent="Claude Code" version="24.0.0">
+  <diagram id="agentic-service-mesh" name="Agentic Service Mesh">
+    <mxGraphModel dx="1400" dy="900" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1700" pageHeight="1169" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+
+        <!-- ===================== Title ===================== -->
+        <mxCell id="title" value="Agentic Service Mesh — Architecture" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;fontSize=22;fontStyle=1;fontColor=#1A1A1A;" vertex="1" parent="1">
+          <mxGeometry x="40" y="20" width="600" height="40" as="geometry" />
+        </mxCell>
+
+        <!-- ===================== Client Layer ===================== -->
+        <mxCell id="browser" value="User Browser&#10;(React SPA client)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=13;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="720" y="80" width="220" height="60" as="geometry" />
+        </mxCell>
+
+        <!-- ===================== AWS Cloud container ===================== -->
+        <mxCell id="aws" value="AWS  (us-west-2)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF8E6;strokeColor=#D79B00;verticalAlign=top;fontSize=14;fontStyle=1;fontColor=#996A00;align=left;spacingLeft=12;spacingTop=8;dashed=0;" vertex="1" parent="1">
+          <mxGeometry x="40" y="180" width="1620" height="900" as="geometry" />
+        </mxCell>
+
+        <!-- ===================== EKS cluster container ===================== -->
+        <mxCell id="eks" value="EKS Cluster  —  namespace: agentic-mesh" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E6F2FF;strokeColor=#3399FF;verticalAlign=top;fontSize=13;fontStyle=1;fontColor=#0066CC;align=left;spacingLeft=12;spacingTop=8;" vertex="1" parent="1">
+          <mxGeometry x="80" y="240" width="1100" height="800" as="geometry" />
+        </mxCell>
+
+        <!-- ALB Ingress -->
+        <mxCell id="alb" value="ALB Ingress Controller&#10;( / → frontend, /api → backend )" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=12;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="430" y="290" width="400" height="60" as="geometry" />
+        </mxCell>
+
+        <!-- Frontend -->
+        <mxCell id="frontend" value="Frontend&#10;React 19 + Vite (nginx)&#10;:3000" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=12;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="120" y="410" width="220" height="80" as="geometry" />
+        </mxCell>
+
+        <!-- Backend -->
+        <mxCell id="backend" value="Backend — NestJS 11  ( :8000, /api/v1 )&#10;&#10;Modules:&#10;• semantic-engine  (OpenAPI → parse → LLM enhance → MCP gen)&#10;• agent-network  (single ReAct Agent + mem0 memory + MCP client)&#10;• identity-security  (JWT / OAuth2.1, credential store)&#10;• observability · sessions(SSE) · llm-config · async-tasks&#10;&#10;Core: Prisma · Redis/BullMQ · Mastra + Vercel AI SDK" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=11;fontStyle=0;align=left;spacingLeft=10;verticalAlign=top;spacingTop=8;" vertex="1" parent="1">
+          <mxGeometry x="400" y="410" width="460" height="220" as="geometry" />
+        </mxCell>
+
+        <!-- mem0 -->
+        <mxCell id="mem0" value="mem0 Service&#10;Agent memory (Python)&#10;:8080" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=12;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="930" y="410" width="220" height="80" as="geometry" />
+        </mxCell>
+
+        <!-- MCP Runtime pods -->
+        <mxCell id="mcp" value="MCP Runtime Pods  (dynamic)&#10;one Deployment per OpenAPI source&#10;Generic Node.js image · MCP Streamable HTTP&#10;auth-injector (API key / Bearer / OAuth)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=11;fontStyle=0;align=center;" vertex="1" parent="1">
+          <mxGeometry x="400" y="700" width="460" height="110" as="geometry" />
+        </mxCell>
+
+        <!-- mock-erp -->
+        <mxCell id="mockerp" value="Mock ERP  (test upstream APIs)&#10;sales :9001 · warehouse :9002&#10;procurement :9003 · catalog :9004&#10;finance :9005 (X-API-Key protected)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=11;fontStyle=0;align=center;" vertex="1" parent="1">
+          <mxGeometry x="930" y="700" width="220" height="110" as="geometry" />
+        </mxCell>
+
+        <!-- Observability UIs (in-cluster) -->
+        <mxCell id="monitoring" value="Prometheus :9090 · Grafana&#10;(monitoring, via ALB /grafana)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#999999;fontSize=11;fontStyle=0;" vertex="1" parent="1">
+          <mxGeometry x="120" y="540" width="220" height="80" as="geometry" />
+        </mxCell>
+
+        <!-- ===================== Managed AWS data stores ===================== -->
+        <mxCell id="rds" value="RDS PostgreSQL 16&#10;(Prisma, 18 models)" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="1260" y="300" width="200" height="90" as="geometry" />
+        </mxCell>
+        <mxCell id="redis" value="ElastiCache Redis 7&#10;(cache + BullMQ broker)" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="1260" y="420" width="200" height="90" as="geometry" />
+        </mxCell>
+        <mxCell id="opensearch" value="OpenSearch 2.13&#10;(mem0 vector store,&#10;index: agent_memories)" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="1260" y="540" width="200" height="100" as="geometry" />
+        </mxCell>
+
+        <!-- AWS Bedrock -->
+        <mxCell id="bedrock" value="AWS Bedrock&#10;Titan Embed V2 (1024d)&#10;Claude Sonnet (extraction)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=11;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="1260" y="680" width="200" height="80" as="geometry" />
+        </mxCell>
+
+        <!-- ===================== External SaaS ===================== -->
+        <mxCell id="ext" value="External Services" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F5F5F5;strokeColor=#999999;verticalAlign=top;fontSize=12;fontStyle=1;fontColor=#666666;align=left;spacingLeft=10;spacingTop=6;dashed=1;" vertex="1" parent="1">
+          <mxGeometry x="1240" y="800" width="240" height="240" as="geometry" />
+        </mxCell>
+        <mxCell id="llm" value="LLM Providers&#10;Claude · GPT-4o · Gemini&#10;(via Vercel AI SDK)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#999999;fontSize=11;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="1260" y="840" width="200" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="langfuse" value="Langfuse Cloud&#10;(LLM execution tracing)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#999999;fontSize=11;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="1260" y="940" width="200" height="70" as="geometry" />
+        </mxCell>
+
+        <!-- ===================== Edges ===================== -->
+        <mxCell id="e_browser_alb" value="HTTPS" style="endArrow=classic;html=1;fontSize=10;strokeColor=#333333;" edge="1" parent="1" source="browser" target="alb">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_alb_fe" value="/" style="endArrow=classic;html=1;fontSize=10;strokeColor=#333333;" edge="1" parent="1" source="alb" target="frontend">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_alb_be" value="/api" style="endArrow=classic;html=1;fontSize=10;strokeColor=#333333;" edge="1" parent="1" source="alb" target="backend">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_fe_be" value="REST (JWT)" style="endArrow=classic;html=1;fontSize=10;strokeColor=#82b366;dashed=0;" edge="1" parent="1" source="frontend" target="backend">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_be_rds" value="Prisma" style="endArrow=classic;html=1;fontSize=10;strokeColor=#6c8ebf;" edge="1" parent="1" source="backend" target="rds">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_be_redis" value="BullMQ / cache" style="endArrow=classic;html=1;fontSize=10;strokeColor=#6c8ebf;" edge="1" parent="1" source="backend" target="redis">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_be_mem0" value="memory REST" style="endArrow=classic;html=1;fontSize=10;strokeColor=#82b366;" edge="1" parent="1" source="backend" target="mem0">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_mem0_os" value="vectors" style="endArrow=classic;html=1;fontSize=10;strokeColor=#6c8ebf;" edge="1" parent="1" source="mem0" target="opensearch">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_mem0_bedrock" value="embed + extract" style="endArrow=classic;html=1;fontSize=10;strokeColor=#d79b00;" edge="1" parent="1" source="mem0" target="bedrock">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_be_mcp" value="MCP (Streamable HTTP)" style="endArrow=classic;html=1;fontSize=10;strokeColor=#9673a6;" edge="1" parent="1" source="backend" target="mcp">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_be_mcp_deploy" value="provisions (K8s API)" style="endArrow=classic;html=1;fontSize=10;strokeColor=#9673a6;dashed=1;exitX=0;exitY=1;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="backend" target="mcp">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_mcp_erp" value="upstream REST&#10;(+ auth inject)" style="endArrow=classic;html=1;fontSize=10;strokeColor=#b85450;" edge="1" parent="1" source="mcp" target="mockerp">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_be_llm" value="agent reasoning" style="endArrow=classic;html=1;fontSize=10;strokeColor=#999999;" edge="1" parent="1" source="backend" target="llm">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_be_langfuse" value="traces" style="endArrow=classic;html=1;fontSize=10;strokeColor=#999999;dashed=1;" edge="1" parent="1" source="backend" target="langfuse">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

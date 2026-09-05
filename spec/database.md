@@ -1,6 +1,6 @@
 # Database Models
 
-Schema source of truth: `backend/prisma/schema.prisma` (18 models).
+Schema source of truth: `backend/prisma/schema.prisma` (19 models).
 
 | Model | Description | Key Relations |
 |-------|------|---------|
@@ -20,5 +20,6 @@ Schema source of truth: `backend/prisma/schema.prisma` (18 models).
 | ExecutionContext | Execution sandbox constraints | API call limits, allowed domains, duration limits |
 | AsyncTask | BullMQ task tracking | openapi_parse/semantic_enhance/mcp_generate |
 | AuditLog | Immutable audit log | — |
+| Policy | Pre-tool and post-tool enforcement rules | Decisions are recorded in AuditLog |
 
 > Agent memory is not stored in PostgreSQL; it is managed by mem0 (OpenSearch). See `memory.service.ts` in the `agent-network` module.

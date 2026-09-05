@@ -71,4 +71,41 @@ describe('ManifestBuilder', () => {
     const c = dep.spec!.template.spec!.containers[0];
     expect((c.envFrom ?? []).some((e) => e.secretRef)).toBe(false);
   });
+
+  it('adds a config hash annotation to trigger rollout when tools change', () => {
+    const depA = buildDeployment({
+      ...base,
+      tools: [
+        {
+          toolName: 'list_accounts',
+          description: 'List accounts',
+          method: 'GET',
+          path: '/accounts',
+          inputSchema: { type: 'object', properties: {} },
+          outputSchema: null,
+          parameterMapping: { path: [], query: [], header: [], body: null },
+        },
+      ],
+    });
+    const depB = buildDeployment({
+      ...base,
+      tools: [
+        {
+          toolName: 'list_payments',
+          description: 'List payments',
+          method: 'GET',
+          path: '/payments',
+          inputSchema: { type: 'object', properties: {} },
+          outputSchema: null,
+          parameterMapping: { path: [], query: [], header: [], body: null },
+        },
+      ],
+    });
+
+    const hashA = depA.spec?.template.metadata?.annotations?.['agentic-mesh/config-hash'];
+    const hashB = depB.spec?.template.metadata?.annotations?.['agentic-mesh/config-hash'];
+    expect(hashA).toMatch(/^[a-f0-9]{16}$/);
+    expect(hashB).toMatch(/^[a-f0-9]{16}$/);
+    expect(hashA).not.toBe(hashB);
+  });
 });

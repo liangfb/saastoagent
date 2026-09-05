@@ -6,12 +6,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { logsApi, type LogQueryParams } from '@/api/observability';
 import type { LogEntry, Trace } from '@/types/api';
 
@@ -85,11 +80,16 @@ export function LogsPage() {
           </Badge>
         ),
       },
-      { header: 'Action', accessor: (row: LogEntry) => row.action ?? row.message },
+      {
+        header: 'Action',
+        accessor: (row: LogEntry) => row.action ?? row.message,
+      },
       {
         header: 'Resource',
         accessor: (row: LogEntry) =>
-          row.resourceType ? `${row.resourceType}${row.resourceId ? `/${row.resourceId}` : ''}` : row.service,
+          row.resourceType
+            ? `${row.resourceType}${row.resourceId ? `/${row.resourceId}` : ''}`
+            : row.service,
       },
       {
         header: 'Trace',
@@ -98,7 +98,12 @@ export function LogsPage() {
       {
         header: '',
         accessor: (row: LogEntry) => (
-          <Button variant="ghost" size="icon-sm" onClick={() => setSelectedLog(row)} aria-label="View log details">
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            onClick={() => setSelectedLog(row)}
+            aria-label="View log details"
+          >
             <Eye className="h-4 w-4" />
           </Button>
         ),
@@ -177,17 +182,29 @@ export function LogsPage() {
               />
             </div>
             {error ? <div className="text-sm text-destructive">{error}</div> : null}
-            <DataTableShell columns={logColumns} data={logs} loading={loading} emptyMessage="No log entries yet" />
+            <DataTableShell
+              columns={logColumns}
+              data={logs}
+              loading={loading}
+              emptyMessage="No log entries yet"
+            />
           </div>
         </TabsContent>
         <TabsContent value="traces">
-          <DataTableShell columns={traceColumns} data={traces} loading={loading} emptyMessage="No traces recorded yet" />
+          <DataTableShell
+            columns={traceColumns}
+            data={traces}
+            loading={loading}
+            emptyMessage="No traces recorded yet"
+          />
         </TabsContent>
       </Tabs>
       <Dialog open={Boolean(selectedLog)} onOpenChange={(open) => !open && setSelectedLog(null)}>
         <DialogContent className="sm:max-w-2xl">
           <DialogHeader>
-            <DialogTitle>{selectedLog?.action ?? selectedLog?.message ?? 'Log details'}</DialogTitle>
+            <DialogTitle>
+              {selectedLog?.action ?? selectedLog?.message ?? 'Log details'}
+            </DialogTitle>
           </DialogHeader>
           <pre className="max-h-[60vh] overflow-auto rounded-md bg-muted p-3 text-xs">
             {selectedLog ? JSON.stringify(selectedLog, null, 2) : ''}
@@ -227,15 +244,13 @@ async function streamAuditLogs(
 }
 
 function parseAuditEvent(chunk: string): LogEntry | null {
-  const dataLine = chunk
-    .split('\n')
-    .find((line) => line.startsWith('data:'));
+  const dataLine = chunk.split('\n').find((line) => line.startsWith('data:'));
   if (!dataLine) return null;
   try {
     const payload = JSON.parse(dataLine.slice('data:'.length).trim());
     return {
       id: String(payload.id),
-      level: payload.details?.status === 'failed' ? 'error' : 'info',
+      level: ['failed', 'denied', 'blocked'].includes(payload.details?.status) ? 'error' : 'info',
       service: payload.resourceType ?? 'system',
       message: payload.action,
       action: payload.action,

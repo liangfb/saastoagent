@@ -20,6 +20,8 @@ import { AuditLogService } from '../observability/audit-log.service';
 import { hashForAudit, sanitizeForAudit } from '../observability/audit-log.utils';
 import type { McpTool } from '@prisma/client';
 import type { Client } from '@modelcontextprotocol/sdk/client/index.js';
+import { PolicyEngineService } from '../policies/policy-engine.service';
+import { PolicyDeniedError, type PolicyFacts, type PolicyPhase } from '../policies/policy.types';
 
 type BindingWithTool = {
   id: string;
@@ -39,6 +41,7 @@ export class SessionsService {
     private readonly broker: SessionStreamBroker,
     private readonly contexts: ExecutionContextManager,
     private readonly langfuse: LangfuseService,
+    private readonly policyEngine: PolicyEngineService,
     private readonly auditLog?: AuditLogService,
   ) {}
 
@@ -179,12 +182,7 @@ export class SessionsService {
         session.agent.llmConfig.provider,
         session.agent.llmConfig.modelId,
       );
-      const agent = createReActAgentInstance(
-        session.agent.name,
-        model,
-        systemPrompt,
-        mastraTools,
-      );
+      const agent = createReActAgentInstance(session.agent.name, model, systemPrompt, mastraTools);
 
       const generation = trace.generation({
         name: `${session.agent.name}.generate`,
@@ -248,9 +246,7 @@ export class SessionsService {
       const message = (err as Error).message;
       this.logger.error(`sendMessage failed: ${message}`, (err as Error).stack);
       this.broker.emit(sessionId, { type: 'error', data: { message } });
-      await this.contexts
-        .terminate(context.id, 'cancelled' as any, message)
-        .catch(() => undefined);
+      await this.contexts.terminate(context.id, 'cancelled' as any, message).catch(() => undefined);
       trace.update({ output: null, metadata: { error: message } });
       await this.langfuse.flush();
       throw err;
@@ -270,7 +266,7 @@ export class SessionsService {
     trace: any,
   ): Promise<{ mastraTools: Record<string, any>; allowedToolIds: string[] }> {
     const bindings = (await this.prisma.agentMcpBinding.findMany({
-      where: { agentId, enabled: true },
+      where: { agentId, enabled: true, mcpTool: { enabledInMcp: true } },
       include: { mcpTool: { include: { mcpServer: true } } },
     })) as unknown as BindingWithTool[];
 
@@ -329,6 +325,14 @@ export class SessionsService {
           {
             onBefore: async ({ toolName, args }) => {
               await this.contexts.recordToolCall(contextId, t.toolId, toolName);
+              await this.enforcePolicy('pre_tool', {
+                user: { id: userId },
+                agent: { id: agentId },
+                session: { id: sessionId },
+                context: { id: contextId, traceId },
+                tool: { id: t.toolId, name: toolName, mcpServerId: serverId },
+                args,
+              });
               await this.recordToolAudit({
                 action: 'tool.call.started',
                 userId,
@@ -346,7 +350,17 @@ export class SessionsService {
                 data: { toolName, arguments: args, mcpServerId: serverId },
               });
             },
-            onSuccess: async ({ toolName, result, durationMs }) => {
+            onSuccess: async ({ toolName, args, result, durationMs }) => {
+              await this.enforcePolicy('post_tool', {
+                user: { id: userId },
+                agent: { id: agentId },
+                session: { id: sessionId },
+                context: { id: contextId, traceId },
+                tool: { id: t.toolId, name: toolName, mcpServerId: serverId },
+                args,
+                result,
+                outcome: { status: 'succeeded', durationMs },
+              });
               await this.recordToolAudit({
                 action: 'tool.call.succeeded',
                 userId,
@@ -374,8 +388,9 @@ export class SessionsService {
                 .end();
             },
             onError: async ({ toolName, error, durationMs }) => {
+              const policyDenial = error instanceof PolicyDeniedError ? error : null;
               await this.recordToolAudit({
-                action: 'tool.call.failed',
+                action: policyDenial ? 'tool.call.blocked' : 'tool.call.failed',
                 userId,
                 traceId,
                 sessionId,
@@ -383,13 +398,19 @@ export class SessionsService {
                 mcpServerId: serverId,
                 mcpToolId: t.toolId,
                 toolName,
-                status: 'failed',
+                status: policyDenial ? 'blocked' : 'failed',
                 durationMs,
                 error: error.message,
+                policyPhase: policyDenial?.phase,
               });
               this.broker.emit(sessionId, {
                 type: 'tool_error',
-                data: { toolName, message: error.message, durationMs },
+                data: {
+                  toolName,
+                  message: error.message,
+                  durationMs,
+                  ...(policyDenial && { policyPhase: policyDenial.phase }),
+                },
               });
               trace
                 .span({
@@ -408,7 +429,7 @@ export class SessionsService {
   }
 
   private async recordToolAudit(input: {
-    action: 'tool.call.started' | 'tool.call.succeeded' | 'tool.call.failed';
+    action: 'tool.call.started' | 'tool.call.succeeded' | 'tool.call.failed' | 'tool.call.blocked';
     userId: string;
     traceId: string;
     sessionId: string;
@@ -416,11 +437,12 @@ export class SessionsService {
     mcpServerId: string;
     mcpToolId: string;
     toolName: string;
-    status: 'started' | 'succeeded' | 'failed';
+    status: 'started' | 'succeeded' | 'failed' | 'blocked';
     args?: unknown;
     result?: unknown;
     durationMs?: number;
     error?: string;
+    policyPhase?: PolicyPhase;
   }) {
     if (!this.auditLog) return;
     const details: Record<string, unknown> = {
@@ -432,6 +454,7 @@ export class SessionsService {
       status: input.status,
       durationMs: input.durationMs ?? null,
       error: input.error ?? null,
+      policyPhase: input.policyPhase ?? null,
     };
     if (input.args !== undefined) {
       details.argumentsHash = hashForAudit(input.args);
@@ -453,6 +476,13 @@ export class SessionsService {
       });
     } catch (err) {
       this.logger.debug(`Tool audit log failed: ${(err as Error).message}`);
+    }
+  }
+
+  private async enforcePolicy(phase: PolicyPhase, facts: PolicyFacts): Promise<void> {
+    const decision = await this.policyEngine.evaluate({ phase, facts });
+    if (decision.effect === 'deny') {
+      throw new PolicyDeniedError(phase, decision);
     }
   }
 
