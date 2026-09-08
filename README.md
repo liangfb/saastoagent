@@ -1,4 +1,4 @@
-# Agentic Service Mesh
+# SaaS to Agent
 
 Turn existing SaaS / enterprise **OpenAPI (REST) endpoints into AI‑Agent‑callable MCP tools** — then talk to them in natural language.
 
@@ -84,7 +84,7 @@ NestJS 11 · React 19 · Mastra + Vercel AI SDK · Prisma + PostgreSQL · Redis 
 
 ## Security
 
-This is a single‑tenant reference implementation. Before any production / public deployment:
+Before any production / public deployment:
 
 - **Rotate all credentials** and use a managed secret store (see `infra/k8s/02-secrets.yaml.example`).
 
